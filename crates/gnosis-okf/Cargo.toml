@@ -1,0 +1,14 @@
+[package]
+name = "gnosis-okf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OKF v0.1 exporter for Gnosis knowledge models"
+
+[dependencies]
+gnosis-core.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true

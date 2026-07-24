@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/gnosis-core",
+    "crates/gnosis-providers",
+    "crates/gnosis-okf",
+    "crates/gnosis-tui",
+    "crates/gnosis-cli",
+]
+default-members = ["crates/gnosis-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Gnosis Contributors"]
+repository = "https://github.com/thanos/gnosis"
+
+[workspace.dependencies]
+gnosis-core = { path = "crates/gnosis-core" }
+gnosis-providers = { path = "crates/gnosis-providers" }
+gnosis-okf = { path = "crates/gnosis-okf" }
+gnosis-tui = { path = "crates/gnosis-tui" }
+
+anyhow = "1"
+blake3 = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+clap = { version = "4", features = ["derive"] }
+crossbeam-channel = "0.5"
+crossterm = "0.28"
+csv = "1"
+ignore = "0.4"
+mime_guess = "2"
+pulldown-cmark = { version = "0.12", default-features = false }
+ratatui = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+thiserror = "2"
+toml = "0.8"
+tree-sitter = "0.24"
+tree-sitter-cpp = "0.23"
+tree-sitter-elixir = "0.3"
+tree-sitter-rust = "0.23"
+uuid = { version = "1", features = ["v4", "serde"] }
+walkdir = "2"

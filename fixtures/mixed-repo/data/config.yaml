@@ -1,0 +1,5 @@
+service: pricing
+replicas: 2
+resources:
+  cpu: "500m"
+  memory: "256Mi"

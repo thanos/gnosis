@@ -1,0 +1,5 @@
+NOTES
+
+THIS IS A PLAIN TEXT FILE
+
+Section-like headings may be detected when fully uppercase.

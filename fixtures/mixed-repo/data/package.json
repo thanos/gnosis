@@ -1,0 +1,10 @@
+{
+  "name": "mixed-repo",
+  "version": "0.1.0",
+  "dependencies": {
+    "example": "1.0.0"
+  },
+  "scripts": {
+    "test": "echo ok"
+  }
+}

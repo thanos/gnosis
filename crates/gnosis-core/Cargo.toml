@@ -1,0 +1,21 @@
+[package]
+name = "gnosis-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core domain types, pipeline, connectors, and knowledge store for Gnosis"
+
+[dependencies]
+anyhow.workspace = true
+blake3.workspace = true
+chrono.workspace = true
+crossbeam-channel.workspace = true
+ignore.workspace = true
+mime_guess.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

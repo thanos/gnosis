@@ -1,0 +1,24 @@
+[package]
+name = "gnosis-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Gnosis CLI — enterprise knowledge compiler"
+default-run = "gnosis"
+
+[lib]
+name = "gnosis_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gnosis"
+path = "src/main.rs"
+
+[dependencies]
+gnosis-core.workspace = true
+gnosis-providers.workspace = true
+gnosis-okf.workspace = true
+gnosis-tui.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+crossbeam-channel.workspace = true

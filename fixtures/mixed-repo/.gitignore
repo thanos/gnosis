@@ -1,0 +1,4 @@
+ignored/
+target/
+knowledge.okf/
+*.okf/

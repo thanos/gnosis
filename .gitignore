@@ -1,0 +1,7 @@
+/target/
+**/target/
+knowledge.okf/
+**/*.okf/
+.DS_Store
+/baoulo/
+.tool-versions
