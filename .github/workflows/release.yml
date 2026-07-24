@@ -65,7 +65,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - run: cargo build --release -p gnosis --target ${{ matrix.target }}
+      - run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package (Unix)
         if: matrix.archive == 'tar.gz'
@@ -123,7 +123,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Publish crates (dependency order)
+      - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
@@ -151,35 +151,6 @@ jobs:
           fi
           export CARGO_REGISTRY_TOKEN="${TOKEN}"
 
-          wait_for_crate() {
-            local crate="$1"
-            local version="$2"
-            echo "Waiting for ${crate} ${version} on crates.io …"
-            for _ in $(seq 1 60); do
-              if cargo search "${crate}" --limit 1 2>/dev/null | grep -Eq "^${crate} = \"${version}\""; then
-                echo "${crate} ${version} is visible"
-                return 0
-              fi
-              sleep 10
-            done
-            echo "Timed out waiting for ${crate}; continuing anyway"
-            return 0
-          }
-
           VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
-          echo "Publishing workspace version ${VERSION}"
-
-          # Prefer env var over deprecated --token (sent as HTTPS header).
-          cargo publish -p gnosis-core
-          wait_for_crate gnosis-core "${VERSION}"
-
-          cargo publish -p gnosis-providers
-          wait_for_crate gnosis-providers "${VERSION}"
-
-          cargo publish -p gnosis-okf
-          wait_for_crate gnosis-okf "${VERSION}"
-
-          cargo publish -p gnosis-tui
-          wait_for_crate gnosis-tui "${VERSION}"
-
-          cargo publish -p gnosis
+          echo "Publishing gnosis ${VERSION}"
+          cargo publish

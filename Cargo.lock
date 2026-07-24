@@ -498,54 +498,17 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
- "clap",
- "crossbeam-channel",
- "gnosis-core",
- "gnosis-okf",
- "gnosis-providers",
- "gnosis-tui",
- "predicates",
- "tempfile",
-]
-
-[[package]]
-name = "gnosis-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
  "blake3",
  "chrono",
+ "clap",
  "crossbeam-channel",
+ "crossterm",
+ "csv",
  "ignore",
  "mime_guess",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "uuid",
-]
-
-[[package]]
-name = "gnosis-okf"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "gnosis-core",
- "serde",
- "serde_json",
- "serde_yaml",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
-name = "gnosis-providers"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "csv",
- "gnosis-core",
+ "predicates",
  "pulldown-cmark",
+ "ratatui",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -556,17 +519,7 @@ dependencies = [
  "tree-sitter-cpp",
  "tree-sitter-elixir",
  "tree-sitter-rust",
-]
-
-[[package]]
-name = "gnosis-tui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crossbeam-channel",
- "crossterm",
- "gnosis-core",
- "ratatui",
+ "uuid",
 ]
 
 [[package]]

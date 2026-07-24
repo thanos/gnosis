@@ -1,15 +1,5 @@
-[workspace]
-resolver = "2"
-members = [
-    "crates/gnosis-core",
-    "crates/gnosis-providers",
-    "crates/gnosis-okf",
-    "crates/gnosis-tui",
-    "crates/gnosis-cli",
-]
-default-members = ["crates/gnosis-cli"]
-
-[workspace.package]
+[package]
+name = "gnosis"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
@@ -18,13 +8,21 @@ repository = "https://github.com/thanos/gnosis"
 homepage = "https://github.com/thanos/gnosis"
 documentation = "https://docs.rs/gnosis"
 rust-version = "1.85"
+description = "Gnosis — enterprise knowledge compiler (CLI + library)"
+readme = "README.md"
+keywords = ["knowledge", "compiler", "okf", "tree-sitter", "tui"]
+categories = ["command-line-utilities", "development-tools"]
+default-run = "gnosis"
 
-[workspace.dependencies]
-gnosis-core = { path = "crates/gnosis-core", version = "0.1.0" }
-gnosis-providers = { path = "crates/gnosis-providers", version = "0.1.0" }
-gnosis-okf = { path = "crates/gnosis-okf", version = "0.1.0" }
-gnosis-tui = { path = "crates/gnosis-tui", version = "0.1.0" }
+[lib]
+name = "gnosis"
+path = "src/lib.rs"
 
+[[bin]]
+name = "gnosis"
+path = "src/main.rs"
+
+[dependencies]
 anyhow = "1"
 blake3 = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
@@ -46,4 +44,9 @@ tree-sitter-cpp = "0.23"
 tree-sitter-elixir = "0.3"
 tree-sitter-rust = "0.23"
 uuid = { version = "1", features = ["v4", "serde"] }
-walkdir = "2"
+
+[dev-dependencies]
+assert_cmd = "2"
+crossbeam-channel = "0.5"
+predicates = "3"
+tempfile = "3"

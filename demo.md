@@ -6,13 +6,13 @@ No hidden setup beyond a Rust toolchain (`cargo` / `rustc`). Optional: `git` on 
 
 ```sh
 cd /path/to/gnosis
-cargo build -p gnosis
+cargo build
 ```
 
 ## 2. Headless scan of the fixture repo
 
 ```sh
-cargo run -p gnosis -- scan ./fixtures/mixed-repo --no-tui --quiet --export --output /tmp/gnosis-demo.okf
+cargo run -- scan ./fixtures/mixed-repo --no-tui --quiet --export --output /tmp/gnosis-demo.okf
 ```
 
 Expect:
@@ -26,7 +26,7 @@ Expect:
 ## 3. Live TUI (optional)
 
 ```sh
-cargo run -p gnosis -- scan ./fixtures/mixed-repo
+cargo run -- scan ./fixtures/mixed-repo
 ```
 
 Watch objects appear, then try:

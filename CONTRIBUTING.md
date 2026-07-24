@@ -12,8 +12,8 @@ Requirements:
 ```bash
 git clone https://github.com/thanos/gnosis.git
 cd gnosis
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test
+cargo clippy --all-targets -- -D warnings
 cargo fmt --all -- --check
 cargo deny check
 ```
@@ -21,24 +21,25 @@ cargo deny check
 Headless demo against the fixture:
 
 ```bash
-cargo run -p gnosis -- scan ./fixtures/mixed-repo --no-tui --quiet
+cargo run -- scan ./fixtures/mixed-repo --no-tui --quiet
 ```
 
 ## Project layout
 
 | Path | Role |
 |------|------|
-| `crates/gnosis-cli/` | Package `gnosis` — CLI binary |
-| `crates/gnosis-core/` | Pipeline, connectors, store, query |
-| `crates/gnosis-providers/` | Understanding providers |
-| `crates/gnosis-okf/` | OKF-style exporter |
-| `crates/gnosis-tui/` | Ratatui UI |
+| `src/lib.rs` | Library API |
+| `src/main.rs` | CLI binary |
+| `src/providers/` | Understanding providers |
+| `src/okf/` | OKF-style exporter |
+| `src/tui/` | Ratatui UI |
 | `fixtures/mixed-repo/` | Demo / e2e fixture |
+| `tests/` | Integration tests |
 | `.github/workflows/` | CI, release, dependency updates |
 
 ## Coding guidelines
 
-- Keep connectors, providers, presentation, and OKF export independent
+- Keep connectors, providers, presentation, and OKF export as clear modules
 - Prefer deterministic providers; do not make an LLM mandatory
 - Be honest about unknown / partial / failed understanding
 - Match existing module style; avoid drive-by refactors
@@ -53,8 +54,9 @@ cargo run -p gnosis -- scan ./fixtures/mixed-repo --no-tui --quiet
 
 ## Release (maintainers)
 
-See [RELEASE.md](RELEASE.md) for the full checklist. Summary:
-1. Ensure `workspace.package.version` in root `Cargo.toml` matches the release (e.g. `0.1.0`)
+See [baoulo/RELEASE.md](baoulo/RELEASE.md) if present, otherwise:
+
+1. Ensure `version` in `Cargo.toml` matches the release (e.g. `0.1.0`)
 2. Move `[Unreleased]` notes into a dated section in `CHANGELOG.md`
 3. Merge to `main`
 4. Ensure repository secrets:
@@ -67,11 +69,10 @@ See [RELEASE.md](RELEASE.md) for the full checklist. Summary:
    git push origin v0.1.0
    ```
 
-6. The [Release](.github/workflows/release.yml) workflow builds binaries, creates a GitHub Release with `SHA256SUMS`, and publishes crates in dependency order:
-   `gnosis-core` → `gnosis-providers` → `gnosis-okf` → `gnosis-tui` → `gnosis`
+6. The Release workflow builds binaries, creates a GitHub Release, and runs `cargo publish` for the single **`gnosis`** crate.
 
-Manual dry-run (leaf crate):
+Manual dry-run:
 
 ```bash
-cargo publish -p gnosis-core --dry-run
+cargo publish --dry-run
 ```

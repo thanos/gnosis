@@ -26,7 +26,7 @@ cargo install gnosis
 ```bash
 cargo install --git https://github.com/thanos/gnosis
 # or from a checkout:
-cargo install --path crates/gnosis-cli
+cargo install --path .
 ```
 
 Prebuilt binaries for Linux, macOS, and Windows are attached to [GitHub Releases](https://github.com/thanos/gnosis/releases) on each `v*` tag (with `SHA256SUMS`).
@@ -34,14 +34,14 @@ Prebuilt binaries for Linux, macOS, and Windows are attached to [GitHub Releases
 ## Quick start
 
 ```sh
-cargo build --release -p gnosis
+cargo build --release
 ./target/release/gnosis scan ./fixtures/mixed-repo
 ```
 
 Headless (CI / scripting):
 
 ```sh
-cargo run -p gnosis -- scan ./fixtures/mixed-repo --no-tui --export
+cargo run -- scan ./fixtures/mixed-repo --no-tui --export
 ```
 
 ## Commands
@@ -88,39 +88,31 @@ Not for yet: cloud buckets, remote-only hosts, PDFs/office, vectors/RAG, or chat
 
 ## Library usage
 
-Depend on the crates that match what you need (all published at the same workspace version):
-
-| Crate | Use for |
-|-------|---------|
-| [`gnosis-core`](https://crates.io/crates/gnosis-core) | Scan config, pipeline, store, queries |
-| [`gnosis-providers`](https://crates.io/crates/gnosis-providers) | Default Tree-sitter + document/data providers |
-| [`gnosis-okf`](https://crates.io/crates/gnosis-okf) | Export the store to an OKF-style bundle |
-| [`gnosis-tui`](https://crates.io/crates/gnosis-tui) | Embed the live UI (optional) |
-| [`gnosis`](https://crates.io/crates/gnosis) | CLI binary; thin re-exports for tests |
+One crate provides both the CLI and the library. Depend on it as:
 
 ```toml
 [dependencies]
-gnosis-core = "0.1"
-gnosis-providers = "0.1"
-gnosis-okf = "0.1"
+gnosis = "0.1"
 ```
+
+Public modules include pipeline/store/query APIs plus `providers`, `okf`, and `tui` for embedding.
 
 Headless scan + export sketch:
 
 ```rust
-use gnosis_core::{Exporter, Pipeline, QueryEngine, ScanConfig};
-use gnosis_okf::OkfExporter;
-use gnosis_providers::default_registry;
+use gnosis::{
+    default_registry, Exporter, OkfExporter, Pipeline, PipelineEvent, QueryEngine, Result,
+    ScanConfig,
+};
 
-fn main() -> gnosis_core::Result<()> {
+fn main() -> Result<()> {
     let config = ScanConfig::with_root("./my-repo");
     let pipeline = Pipeline::new(config.clone(), default_registry());
     let mut handle = pipeline.spawn();
     let events = handle.take_events();
 
-    // Drain until ScanCompleted (or drive a UI from these events).
     while let Ok(ev) = events.recv() {
-        if matches!(ev, gnosis_core::PipelineEvent::ScanCompleted { .. }) {
+        if matches!(ev, PipelineEvent::ScanCompleted { .. }) {
             break;
         }
     }
@@ -133,20 +125,18 @@ fn main() -> gnosis_core::Result<()> {
 }
 ```
 
-Typical flow: `ProviderRegistry` → `Pipeline::spawn` → observe `PipelineEvent`s / query `KnowledgeStore` → `OkfExporter::export`.
+Typical flow: `default_registry()` → `Pipeline::spawn` → observe `PipelineEvent`s / query `KnowledgeStore` → `OkfExporter::export`.
 
 ## Architecture
 
 ```text
-crates/gnosis-cli  (package name: gnosis, binary: gnosis)
-     ↓
-gnosis-tui
-     ↓
-gnosis-core   (types, connectors, pipeline, store, query)
-     ↓
-gnosis-providers  (tree-sitter C++/Rust/Elixir + md/text/json/yaml/toml/csv + generic)
-     ↓
-gnosis-okf    (OKF export behind Exporter trait)
+gnosis (one crate)
+├── binary: gnosis
+└── library modules:
+    ├── connectors, pipeline, store, query
+    ├── providers (tree-sitter + docs/data + generic)
+    ├── okf (export)
+    └── tui (Ratatui UI)
 ```
 
 Pipeline: Connector → Discovery → ProtoData → Provider selection → Analysis → Knowledge store → Query / OKF export.
@@ -172,11 +162,11 @@ Events flow over a bounded channel so the TUI observes progress without coupling
 ## Development
 
 ```bash
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test
+cargo clippy --all-targets -- -D warnings
 cargo fmt --all -- --check
 cargo deny check
-cargo run -p gnosis -- scan ./fixtures/mixed-repo --no-tui
+cargo run -- scan ./fixtures/mixed-repo --no-tui
 ```
 
 ### CI/CD
@@ -192,7 +182,7 @@ Secrets / external setup:
 - Enable the repo on [Coveralls](https://coveralls.io) (action uses `GITHUB_TOKEN`)
 - Set `CARGO_REGISTRY_TOKEN` for crates.io publish on release tags
 
-Releases: see [CONTRIBUTING.md](CONTRIBUTING.md#release-maintainers). Push an annotated `v*` tag (e.g. `v0.1.0`) matching `workspace.package.version`.
+Releases: see [CONTRIBUTING.md](CONTRIBUTING.md#release-maintainers). Push an annotated `v*` tag matching `version` in `Cargo.toml` (publishes the single `gnosis` crate).
 
 ## Demo
 

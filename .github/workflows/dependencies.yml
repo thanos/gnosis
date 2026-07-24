@@ -47,7 +47,7 @@ jobs:
           body: |
             Weekly / on-demand dependency refresh after `cargo update`.
 
-            - [ ] `cargo test --workspace`
+            - [ ] `cargo test`
             - [ ] `cargo audit`
             - [ ] `cargo deny check`
           branch: security-updates
@@ -77,7 +77,7 @@ jobs:
           fi
       - name: Test
         if: steps.check-updates.outputs.updates == 'true'
-        run: cargo test --workspace --all-targets
+        run: cargo test --all-targets
       - name: Create Pull Request
         if: steps.check-updates.outputs.updates == 'true'
         uses: peter-evans/create-pull-request@v6
@@ -89,7 +89,7 @@ jobs:
             Dependency upgrades via `cargo upgrade`.
 
             - [ ] Review Cargo.lock / Cargo.toml diffs
-            - [ ] `cargo test --workspace`
+            - [ ] `cargo test`
             - [ ] `cargo audit`
           branch: dependency-updates
           base: main
