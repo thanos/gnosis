@@ -1,7 +1,7 @@
 use crate::ids::EntityId;
+use crate::knowledge::Entity;
 use crate::status::UnderstandingStatus;
 use crate::store::{FindResults, GraphNeighborhood, InventoryCounts, KnowledgeStore, StoredObject};
-use crate::knowledge::Entity;
 
 pub struct QueryEngine<'a> {
     store: &'a KnowledgeStore,
@@ -69,11 +69,7 @@ impl<'a> QueryEngine<'a> {
                         .unwrap_or(false)
             });
         }
-        objs.sort_by(|a, b| {
-            a.descriptor
-                .relative_path
-                .cmp(&b.descriptor.relative_path)
-        });
+        objs.sort_by(|a, b| a.descriptor.relative_path.cmp(&b.descriptor.relative_path));
         objs
     }
 
@@ -88,11 +84,7 @@ impl<'a> QueryEngine<'a> {
                 )
             })
             .collect();
-        objs.sort_by(|a, b| {
-            a.descriptor
-                .relative_path
-                .cmp(&b.descriptor.relative_path)
-        });
+        objs.sort_by(|a, b| a.descriptor.relative_path.cmp(&b.descriptor.relative_path));
         objs
     }
 

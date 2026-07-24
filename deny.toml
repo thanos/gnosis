@@ -1,0 +1,43 @@
+# cargo-deny configuration for Gnosis.
+# Docs: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "warn"
+ignore = [
+    # Transitive via ratatui; no safe upgrade path yet.
+    "RUSTSEC-2024-0436",
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.8
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    "Unlicense",
+    "LGPL-2.1-or-later",
+    "ISC",
+    "MPL-2.0",
+    "OpenSSL",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

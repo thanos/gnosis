@@ -3,7 +3,13 @@ name = "gnosis-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
 description = "Core domain types, pipeline, connectors, and knowledge store for Gnosis"
+keywords = ["knowledge", "compiler", "pipeline"]
+categories = ["development-tools"]
 
 [dependencies]
 anyhow.workspace = true

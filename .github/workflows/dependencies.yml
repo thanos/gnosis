@@ -1,0 +1,96 @@
+name: Dependencies
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+    inputs:
+      update_type:
+        description: 'Type of update to perform'
+        required: true
+        default: 'security'
+        type: choice
+        options:
+          - security
+          - all
+
+jobs:
+  security-update:
+    name: Security Update
+    runs-on: ubuntu-latest
+    if: github.event.inputs.update_type == 'security' || github.event_name == 'schedule'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-audit
+      - run: cargo audit
+      - run: cargo update
+      - name: Check if updates were made
+        id: check-updates
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "updates=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "updates=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create Pull Request
+        if: steps.check-updates.outputs.updates == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update dependencies for security fixes'
+          title: 'Security: update dependencies'
+          body: |
+            Weekly / on-demand dependency refresh after `cargo update`.
+
+            - [ ] `cargo test --workspace`
+            - [ ] `cargo audit`
+            - [ ] `cargo deny check`
+          branch: security-updates
+          base: main
+          delete-branch: true
+
+  dependency-update:
+    name: Dependency Upgrade
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.update_type == 'all'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-edit
+      - run: cargo upgrade
+      - name: Check if updates were made
+        id: check-updates
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "updates=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "updates=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Test
+        if: steps.check-updates.outputs.updates == 'true'
+        run: cargo test --workspace --all-targets
+      - name: Create Pull Request
+        if: steps.check-updates.outputs.updates == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: upgrade dependencies'
+          title: 'Update dependencies'
+          body: |
+            Dependency upgrades via `cargo upgrade`.
+
+            - [ ] Review Cargo.lock / Cargo.toml diffs
+            - [ ] `cargo test --workspace`
+            - [ ] `cargo audit`
+          branch: dependency-updates
+          base: main
+          delete-branch: true

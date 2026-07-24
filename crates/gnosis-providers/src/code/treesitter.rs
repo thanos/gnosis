@@ -16,7 +16,10 @@ impl UnderstandingProvider for CppProvider {
     }
 
     fn probe(&self, object: &ObjectDescriptor, _proto: &ProtoData) -> Support {
-        if ext_is(&object.extension, &["cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "c"]) {
+        if ext_is(
+            &object.extension,
+            &["cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "c"],
+        ) {
             Support::Full
         } else {
             Support::None
@@ -195,13 +198,33 @@ fn walk(
     relationships: &mut Vec<Relationship>,
 ) {
     match kind {
-        LanguageKind::Cpp => extract_cpp(node, source, provider, object, file_entity, entities, relationships),
-        LanguageKind::Rust => {
-            extract_rust(node, source, provider, object, file_entity, entities, relationships)
-        }
-        LanguageKind::Elixir => {
-            extract_elixir(node, source, provider, object, file_entity, entities, relationships)
-        }
+        LanguageKind::Cpp => extract_cpp(
+            node,
+            source,
+            provider,
+            object,
+            file_entity,
+            entities,
+            relationships,
+        ),
+        LanguageKind::Rust => extract_rust(
+            node,
+            source,
+            provider,
+            object,
+            file_entity,
+            entities,
+            relationships,
+        ),
+        LanguageKind::Elixir => extract_elixir(
+            node,
+            source,
+            provider,
+            object,
+            file_entity,
+            entities,
+            relationships,
+        ),
     }
 
     let mut cursor = node.walk();
@@ -424,7 +447,9 @@ fn extract_cpp(
 }
 
 fn find_identifier<'a>(node: Node<'a>, source: &'a str) -> Option<&'a str> {
-    if node.kind() == "identifier" || node.kind() == "type_identifier" || node.kind() == "field_identifier"
+    if node.kind() == "identifier"
+        || node.kind() == "type_identifier"
+        || node.kind() == "field_identifier"
     {
         return Some(node_text(node, source));
     }

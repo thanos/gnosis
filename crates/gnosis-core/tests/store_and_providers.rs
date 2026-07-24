@@ -1,8 +1,8 @@
+use gnosis_core::{AnalysisResult, ContentReader, KnowledgeRecord, Result};
 use gnosis_core::{
-    KnowledgeStore, ObjectDescriptor, ObjectId, ProviderId, ProviderRegistry, ProtoData, Support,
+    KnowledgeStore, ObjectDescriptor, ObjectId, ProtoData, ProviderId, ProviderRegistry, Support,
     UnderstandingProvider, UnderstandingStatus,
 };
-use gnosis_core::{AnalysisResult, ContentReader, KnowledgeRecord, Result};
 use std::path::PathBuf;
 
 struct AlwaysFull;

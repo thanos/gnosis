@@ -86,14 +86,21 @@ impl PipelineEvent {
     pub fn summary(&self) -> String {
         match self {
             Self::ScanStarted { root } => format!("scan started: {}", root.display()),
-            Self::ScanCompleted { objects, elapsed_ms } => {
+            Self::ScanCompleted {
+                objects,
+                elapsed_ms,
+            } => {
                 format!("scan completed: {objects} objects in {elapsed_ms}ms")
             }
             Self::ObjectDiscovered { path, .. } => format!("discovered {}", path.display()),
             Self::ObjectQueued { id, queue_depth } => {
                 format!("queued {id} (depth {queue_depth})")
             }
-            Self::ProviderSelected { id, provider, support } => {
+            Self::ProviderSelected {
+                id,
+                provider,
+                support,
+            } => {
                 format!("provider {provider} for {id} ({support})")
             }
             Self::AnalysisStarted { id, provider } => {
@@ -105,9 +112,7 @@ impl PipelineEvent {
                 status,
                 entities,
                 relationships,
-            } => format!(
-                "analyzed {id} via {provider}: {status} (+{entities}e/{relationships}r)"
-            ),
+            } => format!("analyzed {id} via {provider}: {status} (+{entities}e/{relationships}r)"),
             Self::EntityCreated { entity } => {
                 format!("entity {} {}", entity.kind, entity.name)
             }

@@ -11,12 +11,12 @@ pub mod knowledge;
 pub mod pipeline;
 pub mod provider;
 pub mod query;
-pub mod store;
 pub mod status;
+pub mod store;
 
 pub use config::{ScanConfig, ScanMetrics};
-pub use connectors::{GitContext, GitProtoData, ObjectDescriptor, ProtoData};
-pub use content::{BytesContentReader, ContentReader};
+pub use connectors::{FilesystemConnector, GitContext, GitProtoData, ObjectDescriptor, ProtoData};
+pub use content::{BytesContentReader, ContentReader, LimitedReader};
 pub use error::{GnosisError, Result};
 pub use events::PipelineEvent;
 pub use exporter::Exporter;

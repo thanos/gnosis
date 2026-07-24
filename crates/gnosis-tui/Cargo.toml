@@ -3,7 +3,13 @@ name = "gnosis-tui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
 description = "Ratatui terminal UI for Gnosis"
+keywords = ["knowledge", "tui", "ratatui"]
+categories = ["command-line-interface"]
 
 [dependencies]
 gnosis-core.workspace = true

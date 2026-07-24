@@ -3,7 +3,13 @@ name = "gnosis-providers"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
 description = "Understanding providers for Gnosis (Tree-sitter and lightweight document/data parsers)"
+keywords = ["knowledge", "tree-sitter", "parser"]
+categories = ["parsing", "development-tools"]
 
 [dependencies]
 gnosis-core.workspace = true
@@ -19,3 +25,6 @@ tree-sitter.workspace = true
 tree-sitter-cpp.workspace = true
 tree-sitter-elixir.workspace = true
 tree-sitter-rust.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

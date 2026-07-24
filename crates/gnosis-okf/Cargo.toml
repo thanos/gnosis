@@ -3,7 +3,13 @@ name = "gnosis-okf"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
 description = "OKF v0.1 exporter for Gnosis knowledge models"
+keywords = ["knowledge", "okf", "export"]
+categories = ["encoding", "development-tools"]
 
 [dependencies]
 gnosis-core.workspace = true
@@ -12,3 +18,6 @@ serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

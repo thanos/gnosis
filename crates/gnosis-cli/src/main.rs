@@ -111,9 +111,7 @@ fn run_scan(
                 config.root.join(&output)
             };
             println!("exporting OKF to {} …", out.display());
-            exporter
-                .export(&store, &out)
-                .context("OKF export failed")?;
+            exporter.export(&store, &out).context("OKF export failed")?;
             println!("export complete");
         }
 

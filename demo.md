@@ -1,32 +1,32 @@
 # Gnosis PoC demo script
 
-No hidden setup beyond a Rust toolchain (`cargo` / `rustc`).
+No hidden setup beyond a Rust toolchain (`cargo` / `rustc`). Optional: `git` on `PATH` for repository enrichment.
 
 ## 1. Build
 
 ```sh
 cd /path/to/gnosis
-cargo build -p gnosis-cli
+cargo build -p gnosis
 ```
 
 ## 2. Headless scan of the fixture repo
 
 ```sh
-cargo run -p gnosis-cli -- scan ./fixtures/mixed-repo --no-tui --export --output /tmp/gnosis-demo.okf
+cargo run -p gnosis -- scan ./fixtures/mixed-repo --no-tui --quiet --export --output /tmp/gnosis-demo.okf
 ```
 
 Expect:
 
-- Summary counts for objects / understood / partial / unknown
-- C++ `PricingEngine`, Rust `Catalog`, Elixir `Pricing.Engine` among entities
+- Summary counts for objects / understood / partial / unknown (fixture typically ~12 objects, 10 understood, 1 partial, 1 unknown)
+- Entities such as C++ `PricingEngine` / `RuleSet`, Rust `Catalog`, Elixir `Pricing.Engine`
 - `data/blob.bin` listed under unknown/partial
-- `ignored/secret.bin` absent (`.gitignore`)
-- OKF bundle at `/tmp/gnosis-demo.okf` with `index.md`, `entities/`, `objects/`, `sidecar.json`
+- `ignored/secret.bin` absent (fixture `.gitignore`)
+- OKF bundle at `/tmp/gnosis-demo.okf` with `index.md`, `entities/`, `objects/`, `relationships/`, `sidecar.json`
 
 ## 3. Live TUI (optional)
 
 ```sh
-cargo run -p gnosis-cli -- scan ./fixtures/mixed-repo
+cargo run -p gnosis -- scan ./fixtures/mixed-repo
 ```
 
 Watch objects appear, then try:

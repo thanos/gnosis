@@ -17,7 +17,10 @@ impl UnderstandingProvider for PlainTextProvider {
         } else if object.media_type.starts_with("text/")
             && !ext_is(
                 &object.extension,
-                &["md", "markdown", "json", "yaml", "yml", "toml", "csv", "rs", "cpp", "h", "ex", "exs"],
+                &[
+                    "md", "markdown", "json", "yaml", "yml", "toml", "csv", "rs", "cpp", "h", "ex",
+                    "exs",
+                ],
             )
         {
             Support::Partial
@@ -39,7 +42,10 @@ impl UnderstandingProvider for PlainTextProvider {
         let path = &object.relative_path;
 
         let lines: Vec<&str> = source.lines().collect();
-        let paragraphs = source.split("\n\n").filter(|p| !p.trim().is_empty()).count();
+        let paragraphs = source
+            .split("\n\n")
+            .filter(|p| !p.trim().is_empty())
+            .count();
         let preview: String = source.chars().take(240).collect();
 
         let mut headings = Vec::new();
@@ -47,7 +53,9 @@ impl UnderstandingProvider for PlainTextProvider {
             let t = line.trim();
             if t.len() >= 3
                 && t.len() < 80
-                && t.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_whitespace() || b == b'-' || b == b':')
+                && t.bytes().all(|b| {
+                    b.is_ascii_uppercase() || b.is_ascii_whitespace() || b == b'-' || b == b':'
+                })
                 && t.chars().any(|c| c.is_alphabetic())
             {
                 headings.push((i + 1, t.to_string()));

@@ -54,9 +54,7 @@ impl ObjectDescriptor {
         modified: Option<SystemTime>,
     ) -> Self {
         let relative_path = path.strip_prefix(root).unwrap_or(path).to_path_buf();
-        let extension = path
-            .extension()
-            .map(|e| e.to_string_lossy().to_string());
+        let extension = path.extension().map(|e| e.to_string_lossy().to_string());
         let media_type = mime_guess::from_path(path)
             .first_or_octet_stream()
             .essence_str()

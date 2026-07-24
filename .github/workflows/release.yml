@@ -1,0 +1,140 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+            bin: gnosis
+          - platform: linux-aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            archive: tar.gz
+            bin: gnosis
+          - platform: macos-aarch64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+            bin: gnosis
+          - platform: macos-x86_64
+            runner: macos-latest
+            target: x86_64-apple-darwin
+            archive: tar.gz
+            bin: gnosis
+          - platform: windows-x86_64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+            bin: gnosis.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if rustup toolchain install stable --target "${{ matrix.target }}"; then
+              rustup default stable
+              exit 0
+            fi
+            echo "rustup download failed (attempt ${attempt}/5), retrying in 15s..."
+            sleep 15
+          done
+          echo "rustup failed after 5 attempts"
+          exit 1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo build --release -p gnosis --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          ARCHIVE="gnosis-${VERSION}-${{ matrix.platform }}.tar.gz"
+          cd "target/${{ matrix.target }}/release"
+          tar -czf "${ARCHIVE}" "${{ matrix.bin }}"
+          mv "${ARCHIVE}" "${GITHUB_WORKSPACE}/"
+
+      - name: Package (Windows)
+        if: matrix.archive == 'zip'
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          ARCHIVE="gnosis-${VERSION}-${{ matrix.platform }}.zip"
+          cd "target/${{ matrix.target }}/release"
+          7z a "${ARCHIVE}" "${{ matrix.bin }}"
+          mv "${ARCHIVE}" "${GITHUB_WORKSPACE}/"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: gnosis-${{ github.ref_name }}-${{ matrix.platform }}.${{ matrix.archive }}
+          if-no-files-found: error
+
+  github-release:
+    name: GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Generate SHA256SUMS
+        working-directory: artifacts
+        run: |
+          shopt -s nullglob
+          sha256sum gnosis-* > SHA256SUMS
+          cat SHA256SUMS
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: artifacts/*
+
+  publish-crates-io:
+    name: Publish to crates.io
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Publish crates (dependency order)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CARGO_REGISTRY_TOKEN}" ]]; then
+            echo "CARGO_REGISTRY_TOKEN secret is not set; skipping crates.io publish"
+            exit 1
+          fi
+          # Publish leaves first so dependents resolve from crates.io.
+          cargo publish -p gnosis-core --token "${CARGO_REGISTRY_TOKEN}"
+          cargo publish -p gnosis-providers --token "${CARGO_REGISTRY_TOKEN}"
+          cargo publish -p gnosis-okf --token "${CARGO_REGISTRY_TOKEN}"
+          cargo publish -p gnosis-tui --token "${CARGO_REGISTRY_TOKEN}"
+          cargo publish -p gnosis --token "${CARGO_REGISTRY_TOKEN}"

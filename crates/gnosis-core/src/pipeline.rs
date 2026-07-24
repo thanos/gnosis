@@ -156,13 +156,7 @@ impl Pipeline {
                         break;
                     }
                     if let Err(e) = process_object(
-                        &object,
-                        &providers,
-                        &config,
-                        &git,
-                        &store,
-                        &metrics,
-                        &events,
+                        &object, &providers, &config, &git, &store, &metrics, &events,
                     ) {
                         let _ = events.send(PipelineEvent::Failure {
                             id: Some(object.id.clone()),

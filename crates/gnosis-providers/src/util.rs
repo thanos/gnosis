@@ -5,7 +5,12 @@ use gnosis_core::{
 use std::collections::BTreeMap;
 use std::path::Path;
 
-pub fn evidence(provider: &ProviderId, summary: impl Into<String>, path: &Path, line: u32) -> Evidence {
+pub fn evidence(
+    provider: &ProviderId,
+    summary: impl Into<String>,
+    path: &Path,
+    line: u32,
+) -> Evidence {
     Evidence {
         summary: summary.into(),
         span: Some(SourceSpan::line(path.to_path_buf(), line)),

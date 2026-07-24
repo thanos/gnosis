@@ -95,13 +95,11 @@ impl UnderstandingProvider for MarkdownProvider {
             }
         }
 
-        let doc_name = title
-            .clone()
-            .unwrap_or_else(|| {
-                path.file_stem()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "document".into())
-            });
+        let doc_name = title.clone().unwrap_or_else(|| {
+            path.file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "document".into())
+        });
 
         let path_owned = path.to_string_lossy().into_owned();
         let attrs_map = {

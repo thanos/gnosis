@@ -81,8 +81,7 @@ impl KnowledgeStore {
             .relative_path
             .to_string_lossy()
             .to_string();
-        self.by_path
-            .insert(path_key, object.descriptor.id.clone());
+        self.by_path.insert(path_key, object.descriptor.id.clone());
         self.objects.insert(object.descriptor.id.clone(), object);
     }
 
@@ -164,9 +163,7 @@ impl KnowledgeStore {
         for e in self.entities.values() {
             if e.name.to_lowercase().contains(&q)
                 || e.kind.to_lowercase().contains(&q)
-                || e.attributes
-                    .values()
-                    .any(|v| v.to_lowercase().contains(&q))
+                || e.attributes.values().any(|v| v.to_lowercase().contains(&q))
             {
                 entities.push(e.clone());
             }
@@ -175,10 +172,7 @@ impl KnowledgeStore {
         for o in self.objects.values() {
             let path = o.descriptor.relative_path.to_string_lossy().to_lowercase();
             if path.contains(&q)
-                || o.descriptor
-                    .media_type
-                    .to_lowercase()
-                    .contains(&q)
+                || o.descriptor.media_type.to_lowercase().contains(&q)
                 || o.classification_reason
                     .as_ref()
                     .map(|r| r.to_lowercase().contains(&q))
@@ -188,11 +182,7 @@ impl KnowledgeStore {
             }
         }
         entities.sort_by(|a, b| a.name.cmp(&b.name));
-        objects.sort_by(|a, b| {
-            a.descriptor
-                .relative_path
-                .cmp(&b.descriptor.relative_path)
-        });
+        objects.sort_by(|a, b| a.descriptor.relative_path.cmp(&b.descriptor.relative_path));
         FindResults { entities, objects }
     }
 

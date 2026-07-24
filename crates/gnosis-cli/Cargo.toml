@@ -1,13 +1,20 @@
 [package]
-name = "gnosis-cli"
+name = "gnosis"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Gnosis CLI — enterprise knowledge compiler"
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Gnosis — enterprise knowledge compiler CLI"
+readme = "../../README.md"
+keywords = ["knowledge", "compiler", "okf", "tree-sitter", "tui"]
+categories = ["command-line-utilities", "development-tools"]
 default-run = "gnosis"
 
 [lib]
-name = "gnosis_cli"
+name = "gnosis"
 path = "src/lib.rs"
 
 [[bin]]
@@ -22,3 +29,8 @@ gnosis-tui.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 crossbeam-channel.workspace = true
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"

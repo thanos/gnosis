@@ -151,10 +151,7 @@ impl UnderstandingProvider for CsvProvider {
                 1,
                 {
                     let mut m = attrs(&[("rows", &samples.len().to_string())]);
-                    m.insert(
-                        "preview".into(),
-                        sample_preview.chars().take(400).collect(),
-                    );
+                    m.insert("preview".into(), sample_preview.chars().take(400).collect());
                     m
                 },
                 Confidence::Medium,

@@ -1,5 +1,9 @@
 //! Ratatui TUI for live Gnosis scans.
 
+#![allow(clippy::type_complexity)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::collapsible_match)]
+
 use anyhow::Result;
 use crossbeam_channel::Receiver;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
@@ -7,10 +11,10 @@ use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
+use gnosis_core::KnowledgeStore;
 use gnosis_core::{
     InventoryCounts, PipelineEvent, QueryEngine, ScanMetrics, StoredObject, UnderstandingStatus,
 };
-use gnosis_core::KnowledgeStore;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -129,7 +133,8 @@ impl TuiApp {
         while let Ok(ev) = self.events.try_recv() {
             if matches!(ev, PipelineEvent::ScanCompleted { .. }) {
                 self.scan_done = true;
-                self.status_line = "scan complete — :summary :unknown :export okf  q to quit".into();
+                self.status_line =
+                    "scan complete — :summary :unknown :export okf  q to quit".into();
             }
             self.event_log.push(ev.summary());
             if self.event_log.len() > self.event_cap {
@@ -310,7 +315,10 @@ impl TuiApp {
         }
         if let Some(name) = cmd.strip_prefix("explain ") {
             match q.explain(name.trim()) {
-                Some(gnosis_core::ExplainResult::Entity { entity, neighborhood }) => {
+                Some(gnosis_core::ExplainResult::Entity {
+                    entity,
+                    neighborhood,
+                }) => {
                     self.output_message = format!(
                         "{} {} ({})\nconfidence: {}\nsource: {}\nattrs: {:?}\nneighbors: {} nodes / {} edges",
                         entity.kind,
@@ -479,7 +487,7 @@ impl TuiApp {
         };
 
         // Prefer command output when present and recent.
-        let text = if !self.output_message.is_empty() && self.command_mode == false {
+        let text = if !self.output_message.is_empty() && !self.command_mode {
             // Show object detail in panel; command output also in status — show both split
             if self.objects.get(self.selected).is_some() && !body.contains("Gnosis summary") {
                 if self.output_message.len() > 20
@@ -505,9 +513,7 @@ impl TuiApp {
         let items: Vec<ListItem> = self
             .objects
             .iter()
-            .map(|o| {
-                ListItem::new(format!("[{}] {}", short_status(o.status), o.path))
-            })
+            .map(|o| ListItem::new(format!("[{}] {}", short_status(o.status), o.path)))
             .collect();
 
         // Split current panel: list + detail
@@ -526,7 +532,11 @@ impl TuiApp {
         f.render_stateful_widget(list, panes[0], &mut self.list_state);
 
         let detail = Paragraph::new(text)
-            .block(Block::default().borders(Borders::ALL).title("Current Object / Output"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Current Object / Output"),
+            )
             .wrap(Wrap { trim: false });
         f.render_widget(detail, panes[1]);
     }
@@ -542,10 +552,14 @@ impl TuiApp {
             Line::from(vec![
                 Span::raw(self.status_line.clone()),
                 Span::raw("  "),
-                Span::styled("[s]ummary [u]nknown [e]xport [:]cmd [q]uit", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    "[s]ummary [u]nknown [e]xport [:]cmd [q]uit",
+                    Style::default().fg(Color::DarkGray),
+                ),
             ])
         };
-        let widget = Paragraph::new(content).block(Block::default().borders(Borders::ALL).title("Command"));
+        let widget =
+            Paragraph::new(content).block(Block::default().borders(Borders::ALL).title("Command"));
         f.render_widget(widget, area);
     }
 }
@@ -586,7 +600,10 @@ fn format_object_detail(o: &StoredObject) -> String {
             "reason: {}",
             o.classification_reason.as_deref().unwrap_or("(none)")
         ),
-        format!("fingerprint: {}", o.proto.fingerprint.as_deref().unwrap_or("-")),
+        format!(
+            "fingerprint: {}",
+            o.proto.fingerprint.as_deref().unwrap_or("-")
+        ),
         format!("entities: {}", o.entity_ids.len()),
     ];
     if let Some(git) = &o.proto.git {
@@ -616,5 +633,172 @@ pub fn drain_events_headless(events: Receiver<PipelineEvent>, quiet: bool) {
             }
             break;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossbeam_channel::bounded;
+    use gnosis_core::{
+        Confidence, Entity, EntityId, ObjectDescriptor, ObjectId, ProtoData, ProviderId,
+        Relationship, RelationshipId, StoredObject,
+    };
+    use ratatui::backend::TestBackend;
+    use std::sync::atomic::Ordering;
+
+    fn seeded_store() -> Arc<Mutex<KnowledgeStore>> {
+        let mut store = KnowledgeStore::new();
+        store.set_root(PathBuf::from("/repo"));
+        store.set_git_branch(Some("main".into()));
+        store.set_enabled_providers(vec!["test".into()]);
+        let id = ObjectId::new("obj:a.rs");
+        let ent = Entity {
+            id: EntityId::new("ent:fn:foo"),
+            kind: "function".into(),
+            name: "foo".into(),
+            attributes: Default::default(),
+            evidence: Vec::new(),
+            confidence: Confidence::High,
+            source_object: id.clone(),
+        };
+        store.upsert_object(StoredObject {
+            descriptor: ObjectDescriptor {
+                id: id.clone(),
+                path: PathBuf::from("/repo/a.rs"),
+                relative_path: PathBuf::from("a.rs"),
+                is_dir: false,
+                size: 1,
+                modified: None,
+                media_type: "text/x-rust".into(),
+                extension: Some("rs".into()),
+            },
+            proto: ProtoData {
+                fingerprint: Some("fp".into()),
+                ..ProtoData::default()
+            },
+            status: UnderstandingStatus::Understood,
+            provider: Some(ProviderId::new("test")),
+            classification_reason: Some("ok".into()),
+            entity_ids: vec![ent.id.clone()],
+            diagnostics: vec!["note".into()],
+        });
+        store.add_entity(ent.clone());
+        store.add_relationship(Relationship {
+            id: RelationshipId::generate("defines", ent.id.as_str(), ent.id.as_str()),
+            kind: "defines".into(),
+            from: ent.id.clone(),
+            to: ent.id,
+            attributes: Default::default(),
+            evidence: Vec::new(),
+            confidence: Confidence::Low,
+        });
+        Arc::new(Mutex::new(store))
+    }
+
+    fn app_with(
+        store: Arc<Mutex<KnowledgeStore>>,
+    ) -> (TuiApp, crossbeam_channel::Sender<PipelineEvent>) {
+        let (tx, rx) = bounded(32);
+        let metrics = Arc::new(ScanMetrics::new());
+        metrics.start();
+        metrics.objects_discovered.store(1, Ordering::Relaxed);
+        let app = TuiApp::new(
+            PathBuf::from("/repo"),
+            store,
+            metrics,
+            rx,
+            50,
+            PathBuf::from("/tmp/out.okf"),
+        );
+        (app, tx)
+    }
+
+    #[test]
+    fn keys_and_commands_drive_state() {
+        let store = seeded_store();
+        let (mut app, tx) = app_with(Arc::clone(&store));
+        app.set_export_handler(|_store, path| {
+            std::fs::create_dir_all(path).ok();
+            std::fs::write(path.join("index.md"), "# ok").ok();
+            Ok(())
+        });
+
+        let _ = tx.send(PipelineEvent::ScanCompleted {
+            objects: 1,
+            elapsed_ms: 1,
+        });
+        app.drain_events();
+        assert!(app.scan_done);
+        app.refresh_objects();
+        assert_eq!(app.objects.len(), 1);
+
+        app.handle_key(KeyCode::Char(':'));
+        assert!(app.command_mode);
+        app.handle_key(KeyCode::Char('h'));
+        app.handle_key(KeyCode::Char('e'));
+        app.handle_key(KeyCode::Char('l'));
+        app.handle_key(KeyCode::Char('p'));
+        app.handle_key(KeyCode::Enter);
+        assert!(app.output_message.contains("commands:"));
+
+        app.handle_key(KeyCode::Char('s'));
+        assert!(app.output_message.contains("Gnosis summary"));
+
+        app.run_command("providers");
+        assert!(app.output_message.contains("test"));
+        app.run_command("stats");
+        assert!(!app.output_message.is_empty());
+        app.run_command("objects");
+        assert!(app.output_message.contains("a.rs"));
+        app.run_command("objects understood");
+        app.run_command("objects rs");
+        app.run_command("unknown");
+        app.run_command("find foo");
+        assert!(app.output_message.contains("entity") || app.output_message.contains("foo"));
+        app.run_command("explain foo");
+        assert!(app.output_message.contains("function") || app.output_message.contains("foo"));
+        app.run_command("graph foo");
+        assert!(app.output_message.contains("graph"));
+        app.run_command("export okf");
+        assert!(app.output_message.contains("exported") || app.output_message.contains("export"));
+        app.run_command("nope");
+        assert!(app.output_message.contains("unknown command"));
+
+        app.handle_key(KeyCode::Char('j'));
+        app.handle_key(KeyCode::Char('k'));
+        app.handle_key(KeyCode::Char('q'));
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn draw_with_test_backend() {
+        let store = seeded_store();
+        let (mut app, _tx) = app_with(store);
+        app.refresh_objects();
+        app.run_command("summary");
+        let backend = TestBackend::new(120, 40);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let flat: String = buffer.content().iter().map(|c| c.symbol()).collect();
+        assert!(flat.contains("Sources") || flat.contains("Activity") || flat.contains("Command"));
+    }
+
+    #[test]
+    fn drain_events_headless_stops_on_completion() {
+        let (tx, rx) = bounded(8);
+        tx.send(PipelineEvent::ObjectDiscovered {
+            id: ObjectId::new("obj:x"),
+            path: PathBuf::from("x"),
+        })
+        .unwrap();
+        tx.send(PipelineEvent::ScanCompleted {
+            objects: 1,
+            elapsed_ms: 1,
+        })
+        .unwrap();
+        drop(tx);
+        drain_events_headless(rx, true);
     }
 }

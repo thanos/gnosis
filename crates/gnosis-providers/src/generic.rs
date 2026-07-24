@@ -39,9 +39,8 @@ impl UnderstandingProvider for GenericMetadataProvider {
             attr.insert("extension".into(), ext.clone());
         }
 
-        let reason = format!(
-            "no specialized provider; recorded metadata only (candidate: {candidate})"
-        );
+        let reason =
+            format!("no specialized provider; recorded metadata only (candidate: {candidate})");
 
         let e = entity(
             "unknown_object",
@@ -54,13 +53,12 @@ impl UnderstandingProvider for GenericMetadataProvider {
             Confidence::Low,
         );
 
-        let status = if object.media_type == "application/octet-stream"
-            || object.extension.is_none()
-        {
-            UnderstandingStatus::Unknown
-        } else {
-            UnderstandingStatus::PartiallyUnderstood
-        };
+        let status =
+            if object.media_type == "application/octet-stream" || object.extension.is_none() {
+                UnderstandingStatus::Unknown
+            } else {
+                UnderstandingStatus::PartiallyUnderstood
+            };
 
         Ok(AnalysisResult {
             record: KnowledgeRecord {

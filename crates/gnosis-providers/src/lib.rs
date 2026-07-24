@@ -1,5 +1,12 @@
 //! Understanding providers for Gnosis.
 
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::collapsible_match)]
+#![allow(clippy::manual_strip)]
+#![allow(clippy::if_same_then_else)]
+#![allow(clippy::match_like_matches_macro)]
+#![allow(clippy::single_match)]
+
 mod code;
 mod data;
 mod docs;

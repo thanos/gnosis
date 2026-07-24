@@ -34,7 +34,7 @@ impl GitContext {
         let tracked = git_output(repo, &["ls-files", "--error-unmatch", &rel_str])
             .map(|_| true)
             .ok()
-            .or_else(|| Some(false));
+            .or(Some(false));
 
         let log = git_output(
             repo,

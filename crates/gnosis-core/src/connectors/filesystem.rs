@@ -35,6 +35,7 @@ impl FilesystemConnector {
         builder.git_ignore(true);
         builder.git_global(true);
         builder.git_exclude(true);
+        builder.require_git(false);
         builder.follow_links(false);
         builder.standard_filters(true);
 

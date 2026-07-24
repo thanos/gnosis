@@ -15,12 +15,14 @@ edition = "2021"
 license = "MIT"
 authors = ["Gnosis Contributors"]
 repository = "https://github.com/thanos/gnosis"
+homepage = "https://github.com/thanos/gnosis"
+rust-version = "1.85"
 
 [workspace.dependencies]
-gnosis-core = { path = "crates/gnosis-core" }
-gnosis-providers = { path = "crates/gnosis-providers" }
-gnosis-okf = { path = "crates/gnosis-okf" }
-gnosis-tui = { path = "crates/gnosis-tui" }
+gnosis-core = { path = "crates/gnosis-core", version = "0.1.0" }
+gnosis-providers = { path = "crates/gnosis-providers", version = "0.1.0" }
+gnosis-okf = { path = "crates/gnosis-okf", version = "0.1.0" }
+gnosis-tui = { path = "crates/gnosis-tui", version = "0.1.0" }
 
 anyhow = "1"
 blake3 = "1"

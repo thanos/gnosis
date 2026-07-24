@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --all-targets
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate coverage
+        run: >
+          cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+          --ignore-filename-regex 'crates/gnosis-cli/src/main\.rs'
+          --fail-under-lines 80
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov-report
+          path: lcov.info
+          if-no-files-found: error
+      - name: Upload to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: lcov.info
+          format: lcov
+          continue-on-error: true
+
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-audit
+      - run: cargo audit
+      - uses: taiki-e/install-action@cargo-deny
+      - run: cargo deny check
+
+  build-release:
+    name: Release build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p gnosis
+      - name: Verify binary (Unix)
+        if: runner.os != 'Windows'
+        run: ./target/release/gnosis about
+      - name: Verify binary (Windows)
+        if: runner.os == 'Windows'
+        run: ./target/release/gnosis.exe about
+
+  publish-check:
+    name: Crates.io dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Dry-run publish / package check
+        run: |
+          set -euo pipefail
+          # Full dry-run for the leaf crate (no unpublished workspace deps).
+          cargo publish -p gnosis-core --dry-run --allow-dirty
+          # Package remaining crates without verify (dependents need crates.io
+          # versions that do not exist until the first real release).
+          cargo package -p gnosis-providers --allow-dirty --no-verify --list >/dev/null
+          cargo package -p gnosis-okf --allow-dirty --no-verify --list >/dev/null
+          cargo package -p gnosis-tui --allow-dirty --no-verify --list >/dev/null
+          cargo package -p gnosis --allow-dirty --no-verify --list >/dev/null
+          echo "publish packaging checks passed"

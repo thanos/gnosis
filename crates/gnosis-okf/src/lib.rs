@@ -55,8 +55,7 @@ struct Frontmatter {
 
 fn export_okf(store: &KnowledgeStore, output: &Path) -> anyhow::Result<()> {
     if output.exists() {
-        fs::remove_dir_all(output)
-            .with_context(|| format!("clear {}", output.display()))?;
+        fs::remove_dir_all(output).with_context(|| format!("clear {}", output.display()))?;
     }
     fs::create_dir_all(output)?;
     fs::create_dir_all(output.join("entities"))?;
@@ -112,13 +111,7 @@ fn export_okf(store: &KnowledgeStore, output: &Path) -> anyhow::Result<()> {
                 let span = e
                     .span
                     .as_ref()
-                    .map(|s| {
-                        format!(
-                            "{}:{}",
-                            s.path.display(),
-                            s.start_line
-                        )
-                    })
+                    .map(|s| format!("{}:{}", s.path.display(), s.start_line))
                     .unwrap_or_default();
                 format!("- {} ({span}) [{}]", e.summary, e.provider)
             })
@@ -139,7 +132,11 @@ fn export_okf(store: &KnowledgeStore, output: &Path) -> anyhow::Result<()> {
              ## Evidence\n\n{}\n",
             entity.name,
             entity.kind,
-            if attrs.is_empty() { "- (none)".into() } else { attrs },
+            if attrs.is_empty() {
+                "- (none)".into()
+            } else {
+                attrs
+            },
             if evidence.is_empty() {
                 "- (none)".into()
             } else {
