@@ -46,7 +46,7 @@ jobs:
             bin: gnosis.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         shell: bash
@@ -65,7 +65,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - run: cargo build --release -p gnosis --target ${{ matrix.target }}
+      - run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package (Unix)
         if: matrix.archive == 'tar.gz'
@@ -87,7 +87,7 @@ jobs:
           7z a "${ARCHIVE}" "${{ matrix.bin }}"
           mv "${ARCHIVE}" "${GITHUB_WORKSPACE}/"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.platform }}
           path: gnosis-${{ github.ref_name }}-${{ matrix.platform }}.${{ matrix.archive }}
@@ -98,8 +98,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
@@ -110,7 +110,7 @@ jobs:
           sha256sum gnosis-* > SHA256SUMS
           cat SHA256SUMS
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: artifacts/*
@@ -120,21 +120,37 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Publish crates (dependency order)
+      - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ -z "${CARGO_REGISTRY_TOKEN}" ]]; then
-            echo "CARGO_REGISTRY_TOKEN secret is not set; skipping crates.io publish"
+          if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
+            echo "CARGO_REGISTRY_TOKEN secret is not set"
             exit 1
           fi
-          # Publish leaves first so dependents resolve from crates.io.
-          cargo publish -p gnosis-core --token "${CARGO_REGISTRY_TOKEN}"
-          cargo publish -p gnosis-providers --token "${CARGO_REGISTRY_TOKEN}"
-          cargo publish -p gnosis-okf --token "${CARGO_REGISTRY_TOKEN}"
-          cargo publish -p gnosis-tui --token "${CARGO_REGISTRY_TOKEN}"
-          cargo publish -p gnosis --token "${CARGO_REGISTRY_TOKEN}"
+
+          # GitHub secrets often pick up a trailing newline or surrounding quotes,
+          # which crates.io rejects ("token contains invalid characters").
+          TOKEN="$(printf '%s' "${CARGO_REGISTRY_TOKEN}" \
+            | tr -d '\r\n' \
+            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+                  -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
+          if [[ -z "${TOKEN}" ]]; then
+            echo "CARGO_REGISTRY_TOKEN is empty after trimming"
+            exit 1
+          fi
+          if ! printf '%s' "${TOKEN}" | LC_ALL=C grep -q '^[[:print:]]*$'; then
+            echo "CARGO_REGISTRY_TOKEN still has non-printable characters."
+            echo "Recreate the secret: crates.io → Account → API Tokens → New token,"
+            echo "paste the cio_… value only (no quotes, no Bearer prefix)."
+            exit 1
+          fi
+          export CARGO_REGISTRY_TOKEN="${TOKEN}"
+
+          VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
+          echo "Publishing gnosis ${VERSION}"
+          cargo publish
