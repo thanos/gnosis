@@ -58,7 +58,7 @@ See [RELEASE.md](RELEASE.md) for the full checklist. Summary:
 2. Move `[Unreleased]` notes into a dated section in `CHANGELOG.md`
 3. Merge to `main`
 4. Ensure repository secrets:
-   - `CARGO_REGISTRY_TOKEN` — crates.io API token
+   - `CARGO_REGISTRY_TOKEN` — crates.io API token (`cio_…` value only; no quotes / Bearer / trailing newline)
    - Coveralls enabled for the GitHub repo (uses `GITHUB_TOKEN`)
 5. Tag and push:
 
