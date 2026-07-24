@@ -1,7 +1,7 @@
-//! OKF v0.1 exporter — emits a markdown+YAML frontmatter knowledge bundle.
+//! OKF-style exporter for Gnosis knowledge models.
 //!
-//! The knowledge model stays independent of OKF; this crate only maps store
-//! contents into a directory of concept documents.
+//! Emits a markdown + YAML frontmatter directory bundle plus `sidecar.json`
+//! behind the [`gnosis_core::Exporter`] trait.
 
 use anyhow::Context;
 use gnosis_core::{Exporter, KnowledgeStore, Result as GnosisResult};

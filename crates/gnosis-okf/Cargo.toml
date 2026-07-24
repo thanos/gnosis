@@ -6,6 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
+documentation = "https://docs.rs/gnosis-okf"
 rust-version.workspace = true
 description = "OKF v0.1 exporter for Gnosis knowledge models"
 keywords = ["knowledge", "okf", "export"]

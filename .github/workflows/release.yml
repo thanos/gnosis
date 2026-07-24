@@ -129,12 +129,38 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${CARGO_REGISTRY_TOKEN}" ]]; then
-            echo "CARGO_REGISTRY_TOKEN secret is not set; skipping crates.io publish"
+            echo "CARGO_REGISTRY_TOKEN secret is not set"
             exit 1
           fi
-          # Publish leaves first so dependents resolve from crates.io.
+
+          wait_for_crate() {
+            local crate="$1"
+            local version="$2"
+            echo "Waiting for ${crate} ${version} on crates.io …"
+            for _ in $(seq 1 60); do
+              if cargo search "${crate}" --limit 1 2>/dev/null | grep -Eq "^${crate} = \"${version}\""; then
+                echo "${crate} ${version} is visible"
+                return 0
+              fi
+              sleep 10
+            done
+            echo "Timed out waiting for ${crate}; continuing anyway"
+            return 0
+          }
+
+          VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
+          echo "Publishing workspace version ${VERSION}"
+
           cargo publish -p gnosis-core --token "${CARGO_REGISTRY_TOKEN}"
+          wait_for_crate gnosis-core "${VERSION}"
+
           cargo publish -p gnosis-providers --token "${CARGO_REGISTRY_TOKEN}"
+          wait_for_crate gnosis-providers "${VERSION}"
+
           cargo publish -p gnosis-okf --token "${CARGO_REGISTRY_TOKEN}"
+          wait_for_crate gnosis-okf "${VERSION}"
+
           cargo publish -p gnosis-tui --token "${CARGO_REGISTRY_TOKEN}"
+          wait_for_crate gnosis-tui "${VERSION}"
+
           cargo publish -p gnosis --token "${CARGO_REGISTRY_TOKEN}"

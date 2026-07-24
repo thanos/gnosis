@@ -6,6 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
+documentation = "https://docs.rs/gnosis-providers"
 rust-version.workspace = true
 description = "Understanding providers for Gnosis (Tree-sitter and lightweight document/data parsers)"
 keywords = ["knowledge", "tree-sitter", "parser"]

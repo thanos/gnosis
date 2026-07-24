@@ -1,4 +1,7 @@
 //! Ratatui TUI for live Gnosis scans.
+//!
+//! The UI observes [`gnosis_core::PipelineEvent`]s and supports deterministic
+//! query commands while a scan is running.
 
 #![allow(clippy::type_complexity)]
 #![allow(clippy::collapsible_if)]

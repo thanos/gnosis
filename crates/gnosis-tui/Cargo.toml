@@ -6,6 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
+documentation = "https://docs.rs/gnosis-tui"
 rust-version.workspace = true
 description = "Ratatui terminal UI for Gnosis"
 keywords = ["knowledge", "tui", "ratatui"]

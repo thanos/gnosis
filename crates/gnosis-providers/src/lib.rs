@@ -1,4 +1,7 @@
 //! Understanding providers for Gnosis.
+//!
+//! Deterministic Tree-sitter and lightweight document/data parsers that emit
+//! structured knowledge records for the Gnosis pipeline.
 
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::collapsible_match)]

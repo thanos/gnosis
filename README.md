@@ -129,11 +129,19 @@ Secrets / external setup:
 - Enable the repo on [Coveralls](https://coveralls.io) (action uses `GITHUB_TOKEN`)
 - Set `CARGO_REGISTRY_TOKEN` for crates.io publish on release tags
 
-Releases: push a `v*` tag (e.g. `v0.1.0`) matching `workspace.package.version`.
+Releases: see [CONTRIBUTING.md](CONTRIBUTING.md#release-maintainers). Push an annotated `v*` tag (e.g. `v0.1.0`) matching `workspace.package.version`.
 
 ## Demo
 
 See [demo.md](demo.md).
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, PR expectations, and the maintainer release checklist.
 
 ## License
 

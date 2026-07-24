@@ -1,4 +1,6 @@
 //! Gnosis core: domain types, connectors, pipeline, store, and queries.
+//!
+//! This crate is the library heart of the Gnosis enterprise knowledge compiler.
 
 pub mod config;
 pub mod connectors;

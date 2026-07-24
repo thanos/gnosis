@@ -6,6 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
+documentation = "https://docs.rs/gnosis-core"
 rust-version.workspace = true
 description = "Core domain types, pipeline, connectors, and knowledge store for Gnosis"
 keywords = ["knowledge", "compiler", "pipeline"]

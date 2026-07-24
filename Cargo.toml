@@ -16,6 +16,7 @@ license = "MIT"
 authors = ["Gnosis Contributors"]
 repository = "https://github.com/thanos/gnosis"
 homepage = "https://github.com/thanos/gnosis"
+documentation = "https://docs.rs/gnosis"
 rust-version = "1.85"
 
 [workspace.dependencies]
