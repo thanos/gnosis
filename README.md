@@ -72,6 +72,69 @@ Scanning is recursive under `<path>` (via `ignore::WalkBuilder`). Descent skips 
 
 Shortcuts: `s` summary · `u` unknown · `e` export · `q` quit
 
+## What you get
+
+1. A live (or printed) inventory of what was **understood**, **partial**, **unknown**, or **failed**
+2. Extracted entities and relationships (functions, classes, modules, documents, CSV columns, …)
+3. Optional **OKF bundle** (`knowledge.okf/` by default) — markdown + YAML you can browse, commit, or feed to other tools
+
+## Good fit today
+
+- Point at an unfamiliar local Git/repo tree and see structure emerge
+- Demo / PoC of “compile repo → structured knowledge”
+- Export a portable knowledge directory for humans or agents
+
+Not for yet: cloud buckets, remote-only hosts, PDFs/office, vectors/RAG, or chat (see [Limitations](#limitations)).
+
+## Library usage
+
+Depend on the crates that match what you need (all published at the same workspace version):
+
+| Crate | Use for |
+|-------|---------|
+| [`gnosis-core`](https://crates.io/crates/gnosis-core) | Scan config, pipeline, store, queries |
+| [`gnosis-providers`](https://crates.io/crates/gnosis-providers) | Default Tree-sitter + document/data providers |
+| [`gnosis-okf`](https://crates.io/crates/gnosis-okf) | Export the store to an OKF-style bundle |
+| [`gnosis-tui`](https://crates.io/crates/gnosis-tui) | Embed the live UI (optional) |
+| [`gnosis`](https://crates.io/crates/gnosis) | CLI binary; thin re-exports for tests |
+
+```toml
+[dependencies]
+gnosis-core = "0.1"
+gnosis-providers = "0.1"
+gnosis-okf = "0.1"
+```
+
+Headless scan + export sketch:
+
+```rust
+use gnosis_core::{Exporter, Pipeline, QueryEngine, ScanConfig};
+use gnosis_okf::OkfExporter;
+use gnosis_providers::default_registry;
+
+fn main() -> gnosis_core::Result<()> {
+    let config = ScanConfig::with_root("./my-repo");
+    let pipeline = Pipeline::new(config.clone(), default_registry());
+    let mut handle = pipeline.spawn();
+    let events = handle.take_events();
+
+    // Drain until ScanCompleted (or drive a UI from these events).
+    while let Ok(ev) = events.recv() {
+        if matches!(ev, gnosis_core::PipelineEvent::ScanCompleted { .. }) {
+            break;
+        }
+    }
+    handle.wait()?;
+
+    let store = handle.store.lock().unwrap();
+    print!("{}", QueryEngine::new(&store).summary());
+    OkfExporter::new().export(&store, &config.output_path)?;
+    Ok(())
+}
+```
+
+Typical flow: `ProviderRegistry` → `Pipeline::spawn` → observe `PipelineEvent`s / query `KnowledgeStore` → `OkfExporter::export`.
+
 ## Architecture
 
 ```text
