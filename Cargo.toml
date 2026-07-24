@@ -28,7 +28,7 @@ blake3 = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }
 crossbeam-channel = "0.5"
-crossterm = "0.28"
+crossterm = "0.29"
 csv = "1"
 ignore = "0.4"
 mime_guess = "2"
