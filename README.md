@@ -13,6 +13,9 @@ Gnosis is an enterprise knowledge compiler: a local-first Rust tool that discove
 
 This is a proof of concept — not a search engine, vector database, or chat UI.
 
+<img width="600" alt="Screenshot 2026-07-24 at 15 40 14" src="https://github.com/user-attachments/assets/1dc94cac-473b-4d1f-bc8e-9bcdc4e88d24" />
+
+
 ## Install
 
 ### From crates.io
