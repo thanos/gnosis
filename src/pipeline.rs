@@ -692,3 +692,22 @@ fn process_object(
         classification_reason: result.classification_reason,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn s3_path_helpers() {
+        assert!(path_looks_like_s3(Path::new("s3://bucket/key")));
+        assert!(path_looks_like_s3(Path::new("S3://bucket/key")));
+        assert!(!path_looks_like_s3(Path::new("/tmp/file.rs")));
+
+        let (bucket, key) = s3_bucket_and_key(Path::new("s3://b/path/to/obj")).unwrap();
+        assert_eq!(bucket, "b");
+        assert_eq!(key, "path/to/obj");
+        assert!(s3_bucket_and_key(Path::new("s3://b")).is_err());
+        assert!(s3_bucket_and_key(Path::new("/not/s3")).is_err());
+    }
+}

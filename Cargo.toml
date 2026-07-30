@@ -25,7 +25,9 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
-aws-sdk-s3 = "1"
+# Omit aws-sdk-s3's default `rustls` feature — it enables legacy rustls 0.21
+# (RUSTSEC-2026-0098/0099/0104). Modern TLS comes from `default-https-client`.
+aws-sdk-s3 = { version = "1", default-features = false, features = ["sigv4a", "http-1x", "default-https-client", "rt-tokio"] }
 blake3 = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 clap = { version = "4", features = ["derive"] }
