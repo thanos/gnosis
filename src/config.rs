@@ -49,6 +49,12 @@ pub struct ScanConfig {
     pub output_path: PathBuf,
     pub skip_output_dir_name: String,
     pub queue_capacity: usize,
+    /// Persistent job database path (redb). Default: `.gnosis/jobs.redb`.
+    pub job_db_path: PathBuf,
+    /// Worker poll interval when the queue is empty.
+    pub job_poll_ms: u64,
+    /// Auto-retry policy for failed analyze jobs.
+    pub retry: crate::jobs::RetryPolicy,
 }
 
 impl Default for ScanConfig {
@@ -63,6 +69,7 @@ impl Default for ScanConfig {
                 "node_modules".into(),
                 ".git".into(),
                 "knowledge.okf".into(),
+                ".gnosis".into(),
             ],
             concurrency: std::thread::available_parallelism()
                 .map(|n| n.get())
@@ -72,6 +79,9 @@ impl Default for ScanConfig {
             output_path: PathBuf::from("knowledge.okf"),
             skip_output_dir_name: "knowledge.okf".into(),
             queue_capacity: 1024,
+            job_db_path: PathBuf::from(".gnosis/jobs.redb"),
+            job_poll_ms: 25,
+            retry: crate::jobs::RetryPolicy::default(),
         }
     }
 }

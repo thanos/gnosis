@@ -44,6 +44,7 @@ pub struct KnowledgeStore {
     root: Option<std::path::PathBuf>,
     git_branch: Option<String>,
     connector: Option<String>,
+    scan_id: Option<String>,
     enabled_providers: Vec<String>,
 }
 
@@ -74,6 +75,14 @@ impl KnowledgeStore {
 
     pub fn connector(&self) -> Option<&str> {
         self.connector.as_deref()
+    }
+
+    pub fn set_scan_id(&mut self, scan_id: impl Into<String>) {
+        self.scan_id = Some(scan_id.into());
+    }
+
+    pub fn scan_id(&self) -> Option<&str> {
+        self.scan_id.as_deref()
     }
 
     pub fn set_enabled_providers(&mut self, providers: Vec<String>) {

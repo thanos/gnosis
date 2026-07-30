@@ -5,3 +5,5 @@ knowledge.okf/
 .DS_Store
 /baoulo/
 .tool-versions
+.gnosis/
+lcov.info

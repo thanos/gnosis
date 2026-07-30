@@ -1,7 +1,8 @@
 use gnosis::default_registry;
 use gnosis::OkfExporter;
-use gnosis::{Exporter, Pipeline, QueryEngine, ScanConfig, UnderstandingStatus};
+use gnosis::{Exporter, MemoryJobStore, Pipeline, QueryEngine, ScanConfig, UnderstandingStatus};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn fixture_root() -> PathBuf {
@@ -70,7 +71,11 @@ fn end_to_end_fixture_scan() {
             .as_millis()
     ));
 
-    let pipeline = Pipeline::new(config.clone(), default_registry());
+    let pipeline = Pipeline::with_job_store(
+        config.clone(),
+        default_registry(),
+        Arc::new(MemoryJobStore::new()),
+    );
     let mut handle = pipeline.spawn();
     let events = handle.take_events();
 

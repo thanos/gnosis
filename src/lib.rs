@@ -10,6 +10,7 @@ pub mod error;
 pub mod events;
 pub mod exporter;
 pub mod ids;
+pub mod jobs;
 pub mod knowledge;
 pub mod okf;
 pub mod pipeline;
@@ -30,6 +31,14 @@ pub use error::{GnosisError, Result};
 pub use events::PipelineEvent;
 pub use exporter::Exporter;
 pub use ids::{EntityId, ObjectId, ProviderId, RelationshipId};
+pub use jobs::{
+    format_job_detail, format_job_list, format_job_list_filtered, format_job_list_line,
+    new_scan_id, parse_age, parse_job_id_list, pause_jobs, pause_scan, prepare_rerun,
+    prepare_rerun_scan, resolve_job_id, resolve_scan_id, stop_jobs, stop_scan, unpause_jobs,
+    unpause_scan, AnalyzeObjectArgs, AnalyzeObjectResult, Job, JobExecutor, JobId, JobListFilter,
+    JobStatus, JobStore, JobSummary, JobWorkerPool, MemoryJobStore, RedbJobStore, RerunReport,
+    RetryPolicy, KIND_ANALYZE_OBJECT,
+};
 pub use knowledge::{
     AnalysisResult, AttributeMap, Confidence, Diagnostic, DiagnosticSeverity, Entity, Evidence,
     KnowledgeRecord, Relationship, SourceSpan,

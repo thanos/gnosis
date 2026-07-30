@@ -8,10 +8,12 @@ use std::path::PathBuf;
 pub enum PipelineEvent {
     ScanStarted {
         root: PathBuf,
+        scan_id: String,
     },
     ScanCompleted {
         objects: u64,
         elapsed_ms: u64,
+        scan_id: String,
     },
     ObjectDiscovered {
         id: ObjectId,
@@ -85,12 +87,15 @@ pub struct MetricsSnapshot {
 impl PipelineEvent {
     pub fn summary(&self) -> String {
         match self {
-            Self::ScanStarted { root } => format!("scan started: {}", root.display()),
+            Self::ScanStarted { root, scan_id } => {
+                format!("scan started: {} ({scan_id})", root.display())
+            }
             Self::ScanCompleted {
                 objects,
                 elapsed_ms,
+                scan_id,
             } => {
-                format!("scan completed: {objects} objects in {elapsed_ms}ms")
+                format!("scan completed: {objects} objects in {elapsed_ms}ms ({scan_id})")
             }
             Self::ObjectDiscovered { path, .. } => format!("discovered {}", path.display()),
             Self::ObjectQueued { id, queue_depth } => {

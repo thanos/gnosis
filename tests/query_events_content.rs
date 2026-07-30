@@ -129,10 +129,12 @@ fn pipeline_event_summaries_cover_variants() {
     let events = vec![
         PipelineEvent::ScanStarted {
             root: PathBuf::from("."),
+            scan_id: "scan:test".into(),
         },
         PipelineEvent::ScanCompleted {
             objects: 1,
             elapsed_ms: 2,
+            scan_id: "scan:test".into(),
         },
         PipelineEvent::ObjectDiscovered {
             id: id.clone(),

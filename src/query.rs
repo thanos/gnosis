@@ -24,10 +24,16 @@ impl<'a> QueryEngine<'a> {
             .git_branch()
             .map(|b| format!("branch: {b}"))
             .unwrap_or_else(|| "not a git repo".into());
+        let scan = self
+            .store
+            .scan_id()
+            .map(|s| format!("scan_id: {s}"))
+            .unwrap_or_else(|| "scan_id: (none)".into());
         format!(
             "Gnosis summary\n\
              root: {root}\n\
              {branch}\n\
+             {scan}\n\
              objects: {}\n\
              understood: {}  partial: {}  unknown: {}  failed: {}\n\
              modules: {}  types: {}  functions: {}\n\

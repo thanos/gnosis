@@ -1,10 +1,15 @@
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use gnosis::{
-    default_registry, drain_events_headless, is_s3_uri, parse_s3_uri, Exporter, OkfExporter,
-    Pipeline, QueryEngine, ScanConfig, ScanSource, TuiApp,
+    default_registry, drain_events_headless, format_job_detail, format_job_list_filtered,
+    is_s3_uri, parse_age, parse_job_id_list, parse_s3_uri, pause_jobs, pause_scan, prepare_rerun,
+    prepare_rerun_scan, resolve_scan_id, stop_jobs, stop_scan, unpause_jobs, unpause_scan,
+    Exporter, JobId, JobListFilter, JobStatus, JobStore, OkfExporter, Pipeline, QueryEngine,
+    RedbJobStore, RetryPolicy, ScanConfig, ScanSource, TuiApp,
 };
 use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -46,9 +51,138 @@ enum Commands {
         /// AWS region for `s3://` scans (otherwise default credential chain)
         #[arg(long)]
         region: Option<String>,
+        /// Persistent job queue database (redb). Default: `.gnosis/jobs.redb`
+        #[arg(long, default_value = ".gnosis/jobs.redb")]
+        job_db: PathBuf,
+        /// Max attempts per job including the first (default: 3; `1` disables retries)
+        #[arg(long, default_value_t = 3)]
+        max_attempts: u32,
+        /// Initial retry backoff in milliseconds (doubles each failure)
+        #[arg(long, default_value_t = 250)]
+        retry_base_ms: u64,
+        /// Maximum retry backoff in milliseconds
+        #[arg(long, default_value_t = 30_000)]
+        retry_max_ms: u64,
+    },
+    /// Inspect persisted jobs (list / detail)
+    Jobs {
+        #[command(subcommand)]
+        command: JobsCommands,
     },
     /// Show product overview
     About,
+}
+
+#[derive(Subcommand, Debug)]
+enum JobsCommands {
+    /// List jobs (optionally filter by status / scan)
+    List {
+        /// Filter: pending | running | paused | completed | failed | stopped
+        #[arg(long, short = 's')]
+        status: Option<String>,
+        /// Restrict to a scan id (`scan:…` / unique prefix)
+        #[arg(long)]
+        scan_id: Option<String>,
+        /// Max rows (default 100)
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+        /// Persistent job queue database
+        #[arg(long, default_value = ".gnosis/jobs.redb")]
+        job_db: PathBuf,
+    },
+    /// List known scan ids
+    Scans {
+        /// Persistent job queue database
+        #[arg(long, default_value = ".gnosis/jobs.redb")]
+        job_db: PathBuf,
+    },
+    /// Show a single job in detail
+    Show {
+        /// Job id (full `job:…` or unique prefix)
+        id: String,
+        /// Persistent job queue database
+        #[arg(long, default_value = ".gnosis/jobs.redb")]
+        job_db: PathBuf,
+    },
+    /// Delete jobs by age and/or scan id
+    Purge {
+        /// Age threshold (e.g. `5d`, `12h`) — optional when `--scan-id` is set
+        age: Option<String>,
+        /// Delete all jobs for this scan (or intersect with age)
+        #[arg(long)]
+        scan_id: Option<String>,
+        /// Persistent job queue database
+        #[arg(long, default_value = ".gnosis/jobs.redb")]
+        job_db: PathBuf,
+        /// Print what would be deleted without removing
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Pause pending/running jobs (ids and/or --scan-id)
+    Pause {
+        /// Comma-delimited job ids (optional when `--scan-id` is set)
+        ids: Option<String>,
+        /// Pause every pending/running job in this scan
+        #[arg(long)]
+        scan_id: Option<String>,
+        /// Persistent job queue database
+        #[arg(long, default_value = ".gnosis/jobs.redb")]
+        job_db: PathBuf,
+    },
+    /// Resume paused jobs (ids and/or --scan-id)
+    Unpause {
+        /// Comma-delimited job ids (optional when `--scan-id` is set)
+        ids: Option<String>,
+        /// Unpause every paused job in this scan
+        #[arg(long)]
+        scan_id: Option<String>,
+        /// Persistent job queue database
+        #[arg(long, default_value = ".gnosis/jobs.redb")]
+        job_db: PathBuf,
+    },
+    /// Stop pending/paused/running jobs (ids and/or --scan-id)
+    Stop {
+        /// Comma-delimited job ids (optional when `--scan-id` is set)
+        ids: Option<String>,
+        /// Stop every active job in this scan
+        #[arg(long)]
+        scan_id: Option<String>,
+        /// Persistent job queue database
+        #[arg(long, default_value = ".gnosis/jobs.redb")]
+        job_db: PathBuf,
+    },
+    /// Requeue and re-execute jobs by id list and/or scan id
+    Rerun {
+        /// Comma-delimited job ids (optional when `--scan-id` is set)
+        ids: Option<String>,
+        /// Requeue every job belonging to this scan
+        #[arg(long)]
+        scan_id: Option<String>,
+        /// Persistent job queue database
+        #[arg(long, default_value = ".gnosis/jobs.redb")]
+        job_db: PathBuf,
+        /// Worker concurrency
+        #[arg(long)]
+        concurrency: Option<usize>,
+        /// Maximum object size in bytes when re-reading artifacts
+        #[arg(long, default_value_t = 2 * 1024 * 1024)]
+        max_size: u64,
+        /// AWS region for `s3://` artifacts
+        #[arg(long)]
+        region: Option<String>,
+        /// Requeue only; do not execute workers
+        #[arg(long)]
+        no_run: bool,
+        /// Max attempts per job including the first (default: 3)
+        #[arg(long, default_value_t = 3)]
+        max_attempts: u32,
+        /// Initial retry backoff in milliseconds
+        #[arg(long, default_value_t = 250)]
+        retry_base_ms: u64,
+        /// Maximum retry backoff in milliseconds
+        #[arg(long, default_value_t = 30_000)]
+        retry_max_ms: u64,
+    },
 }
 
 fn main() -> Result<()> {
@@ -67,6 +201,10 @@ fn main() -> Result<()> {
             output,
             export,
             region,
+            job_db,
+            max_attempts,
+            retry_base_ms,
+            retry_max_ms,
         } => run_scan(
             path,
             no_tui,
@@ -76,10 +214,300 @@ fn main() -> Result<()> {
             output,
             export,
             region,
+            job_db,
+            RetryPolicy::new(max_attempts, retry_base_ms, retry_max_ms),
         ),
+        Commands::Jobs { command } => run_jobs(command),
     }
 }
 
+fn run_jobs(command: JobsCommands) -> Result<()> {
+    match command {
+        JobsCommands::List {
+            status,
+            scan_id,
+            limit,
+            job_db,
+        } => {
+            let status = match status {
+                Some(s) => Some(JobStatus::from_str(&s).map_err(|e| anyhow::anyhow!(e))?),
+                None => None,
+            };
+            let store = RedbJobStore::open(&job_db)
+                .with_context(|| format!("open job db {}", job_db.display()))?;
+            let resolved_scan = match scan_id {
+                Some(q) => Some(resolve_scan_id(&store, &q).map_err(|e| anyhow::anyhow!(e))?),
+                None => None,
+            };
+            let filter = JobListFilter {
+                scan_id: resolved_scan.clone(),
+                status,
+                limit: Some(limit),
+            };
+            let summary = match &resolved_scan {
+                Some(sid) => store.summary(sid).map_err(|e| anyhow::anyhow!(e))?,
+                None => store.summary_all().map_err(|e| anyhow::anyhow!(e))?,
+            };
+            let jobs = store.list(&filter).map_err(|e| anyhow::anyhow!(e))?;
+            println!(
+                "{}",
+                format_job_list_filtered(&jobs, Some(&summary), status, resolved_scan.as_deref())
+            );
+            Ok(())
+        }
+        JobsCommands::Scans { job_db } => {
+            let store = RedbJobStore::open(&job_db)
+                .with_context(|| format!("open job db {}", job_db.display()))?;
+            let ids = store.list_scan_ids().map_err(|e| anyhow::anyhow!(e))?;
+            if ids.is_empty() {
+                println!("(no scans)");
+            } else {
+                for id in ids {
+                    let s = store.summary(&id).map_err(|e| anyhow::anyhow!(e))?;
+                    println!(
+                        "{id}  total={}  pending={} running={} paused={} completed={} failed={} stopped={}",
+                        s.total(),
+                        s.pending,
+                        s.running,
+                        s.paused,
+                        s.completed,
+                        s.failed,
+                        s.stopped
+                    );
+                }
+            }
+            Ok(())
+        }
+        JobsCommands::Show { id, job_db } => {
+            let store = RedbJobStore::open(&job_db)
+                .with_context(|| format!("open job db {}", job_db.display()))?;
+            let job = resolve_job_cli(&store, &id)?;
+            println!("{}", format_job_detail(&job));
+            Ok(())
+        }
+        JobsCommands::Purge {
+            age,
+            scan_id,
+            job_db,
+            dry_run,
+        } => {
+            if age.is_none() && scan_id.is_none() {
+                bail!("purge requires an age (e.g. 5d) and/or --scan-id");
+            }
+            let store = RedbJobStore::open(&job_db)
+                .with_context(|| format!("open job db {}", job_db.display()))?;
+            let resolved_scan = match scan_id {
+                Some(q) => Some(resolve_scan_id(&store, &q).map_err(|e| anyhow::anyhow!(e))?),
+                None => None,
+            };
+
+            if let Some(age) = age {
+                let duration = parse_age(&age).map_err(|e| anyhow::anyhow!(e))?;
+                let cutoff = chrono::Utc::now() - duration;
+                let scope = resolved_scan
+                    .as_ref()
+                    .map(|s| format!(" in scan {s}"))
+                    .unwrap_or_default();
+                if dry_run {
+                    let filter = JobListFilter {
+                        scan_id: resolved_scan.clone(),
+                        ..Default::default()
+                    };
+                    let n = store
+                        .list(&filter)
+                        .map_err(|e| anyhow::anyhow!(e))?
+                        .into_iter()
+                        .filter(|j| j.updated_at < cutoff)
+                        .count();
+                    println!("dry-run: would purge {n} job(s) older than {age}{scope}");
+                } else {
+                    let n = store
+                        .purge_older_than(cutoff, resolved_scan.as_deref())
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    println!("purged {n} job(s) older than {age}{scope}");
+                }
+            } else {
+                let sid = resolved_scan.expect("scan_id required when age omitted");
+                if dry_run {
+                    let n = store.summary(&sid).map_err(|e| anyhow::anyhow!(e))?.total();
+                    println!("dry-run: would purge {n} job(s) in scan {sid}");
+                } else {
+                    let n = store.purge_scan(&sid).map_err(|e| anyhow::anyhow!(e))?;
+                    println!("purged {n} job(s) in scan {sid}");
+                }
+            }
+            Ok(())
+        }
+        JobsCommands::Pause {
+            ids,
+            scan_id,
+            job_db,
+        } => run_job_control(JobControl::Pause, ids, scan_id, job_db),
+        JobsCommands::Unpause {
+            ids,
+            scan_id,
+            job_db,
+        } => run_job_control(JobControl::Unpause, ids, scan_id, job_db),
+        JobsCommands::Stop {
+            ids,
+            scan_id,
+            job_db,
+        } => run_job_control(JobControl::Stop, ids, scan_id, job_db),
+        JobsCommands::Rerun {
+            ids,
+            scan_id,
+            job_db,
+            concurrency,
+            max_size,
+            region,
+            no_run,
+            max_attempts,
+            retry_base_ms,
+            retry_max_ms,
+        } => {
+            match (&ids, &scan_id) {
+                (None, None) => bail!("rerun requires comma-delimited ids and/or --scan-id"),
+                (Some(_), Some(_)) => {
+                    bail!("pass either comma-delimited ids or --scan-id, not both")
+                }
+                _ => {}
+            }
+
+            let store: Arc<dyn JobStore> = Arc::new(
+                RedbJobStore::open(&job_db)
+                    .with_context(|| format!("open job db {}", job_db.display()))?,
+            );
+
+            if no_run {
+                let report = if let Some(sid) = &scan_id {
+                    prepare_rerun_scan(Arc::clone(&store), sid).map_err(|e| anyhow::anyhow!(e))?
+                } else {
+                    let queries = parse_job_id_list(ids.as_deref().unwrap())
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    prepare_rerun(Arc::clone(&store), &queries).map_err(|e| anyhow::anyhow!(e))?
+                };
+                println!(
+                    "requeued {} job(s) under scan {} (not executed; omit --no-run to process)",
+                    report.requeued.len(),
+                    report.scan_id
+                );
+                for id in &report.requeued {
+                    println!("  {id}");
+                }
+                return Ok(());
+            }
+
+            let workers = concurrency.unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4)
+                    .min(8)
+            });
+            let retry = RetryPolicy::new(max_attempts, retry_base_ms, retry_max_ms);
+
+            if let Some(sid) = &scan_id {
+                Pipeline::rerun_scan(store, sid, workers, max_size, region.as_deref(), retry)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+            } else {
+                let queries =
+                    parse_job_id_list(ids.as_deref().unwrap()).map_err(|e| anyhow::anyhow!(e))?;
+                Pipeline::rerun_jobs(store, &queries, workers, max_size, region.as_deref(), retry)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+            }
+            Ok(())
+        }
+    }
+}
+
+enum JobControl {
+    Pause,
+    Unpause,
+    Stop,
+}
+
+fn run_job_control(
+    action: JobControl,
+    ids: Option<String>,
+    scan_id: Option<String>,
+    job_db: PathBuf,
+) -> Result<()> {
+    match (&ids, &scan_id) {
+        (None, None) => bail!(
+            "{} requires comma-delimited ids and/or --scan-id",
+            match action {
+                JobControl::Pause => "pause",
+                JobControl::Unpause => "unpause",
+                JobControl::Stop => "stop",
+            }
+        ),
+        (Some(_), Some(_)) => {
+            bail!("pass either comma-delimited ids or --scan-id, not both")
+        }
+        _ => {}
+    }
+
+    let store =
+        RedbJobStore::open(&job_db).with_context(|| format!("open job db {}", job_db.display()))?;
+
+    let changed = if let Some(sid) = &scan_id {
+        match action {
+            JobControl::Pause => pause_scan(&store, sid),
+            JobControl::Unpause => unpause_scan(&store, sid),
+            JobControl::Stop => stop_scan(&store, sid),
+        }
+        .map_err(|e| anyhow::anyhow!(e))?
+    } else {
+        let queries = parse_job_id_list(ids.as_deref().unwrap()).map_err(|e| anyhow::anyhow!(e))?;
+        match action {
+            JobControl::Pause => pause_jobs(&store, &queries),
+            JobControl::Unpause => unpause_jobs(&store, &queries),
+            JobControl::Stop => stop_jobs(&store, &queries),
+        }
+        .map_err(|e| anyhow::anyhow!(e))?
+    };
+
+    let verb = match action {
+        JobControl::Pause => "paused",
+        JobControl::Unpause => "unpaused",
+        JobControl::Stop => "stopped",
+    };
+    println!("{verb} {} job(s)", changed.len());
+    for id in &changed {
+        println!("  {id}");
+    }
+    Ok(())
+}
+
+fn resolve_job_cli(store: &RedbJobStore, query: &str) -> Result<gnosis::Job> {
+    let id = JobId::new(query);
+    if let Some(job) = store.get(&id).map_err(|e| anyhow::anyhow!(e))? {
+        return Ok(job);
+    }
+    if !query.starts_with("job:") {
+        let prefixed = JobId::new(format!("job:{query}"));
+        if let Some(job) = store.get(&prefixed).map_err(|e| anyhow::anyhow!(e))? {
+            return Ok(job);
+        }
+    }
+    let all = store
+        .list(&JobListFilter::default())
+        .map_err(|e| anyhow::anyhow!(e))?;
+    let q = query.to_ascii_lowercase();
+    let matches: Vec<_> = all
+        .into_iter()
+        .filter(|j| {
+            let id = j.id.as_str().to_ascii_lowercase();
+            id == q || id.ends_with(&q) || id.contains(&q)
+        })
+        .collect();
+    match matches.len() {
+        0 => bail!("job not found: {query}"),
+        1 => Ok(matches.into_iter().next().unwrap()),
+        n => bail!("ambiguous job id '{query}' ({n} matches); use a longer prefix"),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn run_scan(
     path: String,
     no_tui: bool,
@@ -89,6 +517,8 @@ fn run_scan(
     output: PathBuf,
     auto_export: bool,
     region: Option<String>,
+    job_db: PathBuf,
+    retry: RetryPolicy,
 ) -> Result<()> {
     let mut config = if is_s3_uri(&path) {
         let location = parse_s3_uri(&path).map_err(|e| anyhow::anyhow!(e))?;
@@ -108,9 +538,11 @@ fn run_scan(
         config.concurrency = c.max(1);
     }
     config.output_path = output.clone();
+    config.job_db_path = job_db;
+    config.retry = retry;
 
     let providers = default_registry();
-    let pipeline = Pipeline::new(config.clone(), providers);
+    let pipeline = Pipeline::new(config.clone(), providers).context("create pipeline")?;
     let mut handle = pipeline.spawn();
     let events = handle.take_events();
 
@@ -168,6 +600,7 @@ fn run_scan(
     let mut app = TuiApp::new(
         config.root.clone(),
         handle.store.clone(),
+        handle.job_store.clone(),
         handle.metrics.clone(),
         events,
         config.event_history_len,
@@ -194,12 +627,28 @@ const HELP_TEXT: &str = r#"Gnosis — Enterprise Knowledge Compiler
   gnosis scan <target> --no-tui      Headless scan (prints summary)
   gnosis scan <target> --no-tui --export
 
+  Each scan creates a scan id (`scan:…`); every job is linked to it.
+
+  gnosis jobs scans                  List scan ids with job counts
+  gnosis jobs list [--status S] [--scan-id ID]
+  gnosis jobs show <id>              Job detail (args / result / error)
+  gnosis jobs pause [--scan-id ID] [ids]
+  gnosis jobs unpause [--scan-id ID] [ids]
+  gnosis jobs stop [--scan-id ID] [ids]
+  gnosis jobs purge <age>            Delete jobs older than age (e.g. 5d)
+  gnosis jobs purge --scan-id ID     Delete all jobs for a scan
+  gnosis jobs purge 5d --scan-id ID  Age filter within a scan
+  gnosis jobs rerun <id,id,…>        Requeue and re-run jobs by id
+  gnosis jobs rerun --scan-id ID     Requeue and re-run an entire scan
+
+Artifacts are processed as durable jobs (default store: .gnosis/jobs.redb).
 S3 uses the default AWS credential chain; pass --region to override.
 
 TUI commands (press :):
-  summary | objects [status] | unknown | providers | stats
+  summary | objects | unknown | providers | stats
+  jobs [status] | job <id>
   find <text> | explain <name> | graph <name>
   export okf [path] | help | quit
 
-Shortcuts: s summary · u unknown · e export · q quit
+Shortcuts: s summary · u unknown · e export · J jobs · q quit
 "#;

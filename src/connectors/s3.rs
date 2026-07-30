@@ -352,10 +352,8 @@ impl<B: S3Backend> S3Connector<B> {
                 Some((p, n)) => (p, n),
                 None => ("", relative),
             };
-            if obj_parent == parent && !name.is_empty() {
-                if !names.iter().any(|n| n == name) {
-                    names.push(name.to_string());
-                }
+            if obj_parent == parent && !name.is_empty() && !names.iter().any(|n| n == name) {
+                names.push(name.to_string());
             }
             if names.len() >= limit {
                 break;
