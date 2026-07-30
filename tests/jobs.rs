@@ -500,11 +500,7 @@ fn redb_retry_backoff_and_fail() {
     let _ = store.claim_next(scan, "w").unwrap().unwrap();
 
     store
-        .schedule_retry(
-            &id,
-            "boom".into(),
-            Utc::now() + ChronoDuration::seconds(60),
-        )
+        .schedule_retry(&id, "boom".into(), Utc::now() + ChronoDuration::seconds(60))
         .unwrap();
     let job = store.get(&id).unwrap().unwrap();
     assert_eq!(job.status, JobStatus::Pending);
@@ -515,7 +511,10 @@ fn redb_retry_backoff_and_fail() {
     store
         .schedule_retry(&id, "ignored".into(), Utc::now())
         .unwrap();
-    assert_eq!(store.get(&id).unwrap().unwrap().error.as_deref(), Some("boom"));
+    assert_eq!(
+        store.get(&id).unwrap().unwrap().error.as_deref(),
+        Some("boom")
+    );
 
     // Make claimable, claim, then fail terminally.
     store.requeue(&id, None).unwrap();
@@ -527,10 +526,7 @@ fn redb_retry_backoff_and_fail() {
     store
         .complete(&id, serde_json::json!({"no": true}))
         .unwrap();
-    assert_eq!(
-        store.get(&id).unwrap().unwrap().status,
-        JobStatus::Failed
-    );
+    assert_eq!(store.get(&id).unwrap().unwrap().status, JobStatus::Failed);
 }
 
 #[test]
@@ -564,7 +560,11 @@ fn job_store_count_matches_summary() {
         .enqueue(Job::new(scan, "k", serde_json::json!({"role": "paused"})))
         .unwrap();
     let completed = store
-        .enqueue(Job::new(scan, "k", serde_json::json!({"role": "completed"})))
+        .enqueue(Job::new(
+            scan,
+            "k",
+            serde_json::json!({"role": "completed"}),
+        ))
         .unwrap();
     let failed = store
         .enqueue(Job::new(scan, "k", serde_json::json!({"role": "failed"})))
@@ -587,9 +587,7 @@ fn job_store_count_matches_summary() {
 
     let claimed_completed = store.claim_next(scan, "w").unwrap().unwrap();
     assert_eq!(claimed_completed.id, completed);
-    store
-        .complete(&completed, serde_json::json!({}))
-        .unwrap();
+    store.complete(&completed, serde_json::json!({})).unwrap();
 
     let claimed_failed = store.claim_next(scan, "w").unwrap().unwrap();
     assert_eq!(claimed_failed.id, failed);
@@ -600,8 +598,14 @@ fn job_store_count_matches_summary() {
     store.stop(&stopped).unwrap();
 
     // pending was requeued and never claimed again → still pending
-    assert_eq!(store.get(&pending).unwrap().unwrap().status, JobStatus::Pending);
-    assert_eq!(store.get(&running).unwrap().unwrap().status, JobStatus::Running);
+    assert_eq!(
+        store.get(&pending).unwrap().unwrap().status,
+        JobStatus::Pending
+    );
+    assert_eq!(
+        store.get(&running).unwrap().unwrap().status,
+        JobStatus::Running
+    );
 
     let summary = store.summary(scan).unwrap();
     assert_eq!(summary.pending, 1);
