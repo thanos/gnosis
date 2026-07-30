@@ -9,7 +9,8 @@
 
 use crate::KnowledgeStore;
 use crate::{
-    InventoryCounts, PipelineEvent, QueryEngine, ScanMetrics, StoredObject, UnderstandingStatus,
+    format_job_detail, format_job_list, InventoryCounts, JobId, JobListFilter, JobStatus, JobStore,
+    PipelineEvent, QueryEngine, ScanMetrics, StoredObject, UnderstandingStatus,
 };
 use anyhow::Result;
 use crossbeam_channel::Receiver;
@@ -26,11 +27,13 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wra
 use ratatui::Terminal;
 use std::io::stdout;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 pub struct TuiApp {
     store: Arc<Mutex<KnowledgeStore>>,
+    job_store: Arc<dyn JobStore>,
     metrics: Arc<ScanMetrics>,
     events: Receiver<PipelineEvent>,
     event_log: Vec<String>,
@@ -42,8 +45,11 @@ pub struct TuiApp {
     command_mode: bool,
     status_line: String,
     output_message: String,
+    /// Command output takes over the lower panel until the user browses objects again.
+    show_output: bool,
     root: PathBuf,
     scan_done: bool,
+    scan_id: Option<String>,
     should_quit: bool,
     export_path: PathBuf,
     on_export: Option<Box<dyn Fn(&KnowledgeStore, &PathBuf) -> Result<()> + Send>>,
@@ -60,6 +66,7 @@ impl TuiApp {
     pub fn new(
         root: PathBuf,
         store: Arc<Mutex<KnowledgeStore>>,
+        job_store: Arc<dyn JobStore>,
         metrics: Arc<ScanMetrics>,
         events: Receiver<PipelineEvent>,
         event_cap: usize,
@@ -69,6 +76,7 @@ impl TuiApp {
         list_state.select(Some(0));
         Self {
             store,
+            job_store,
             metrics,
             events,
             event_log: Vec::new(),
@@ -80,8 +88,10 @@ impl TuiApp {
             command_mode: false,
             status_line: "scan running — press : for commands, q to quit".into(),
             output_message: String::new(),
+            show_output: false,
             root,
             scan_done: false,
+            scan_id: None,
             should_quit: false,
             export_path,
             on_export: None,
@@ -134,10 +144,17 @@ impl TuiApp {
 
     fn drain_events(&mut self) {
         while let Ok(ev) = self.events.try_recv() {
-            if matches!(ev, PipelineEvent::ScanCompleted { .. }) {
-                self.scan_done = true;
-                self.status_line =
-                    "scan complete — :summary :unknown :export okf  q to quit".into();
+            match &ev {
+                PipelineEvent::ScanStarted { scan_id, .. } => {
+                    self.scan_id = Some(scan_id.clone());
+                }
+                PipelineEvent::ScanCompleted { scan_id, .. } => {
+                    self.scan_id = Some(scan_id.clone());
+                    self.scan_done = true;
+                    self.status_line =
+                        "scan complete — :summary :jobs :unknown :export okf  q to quit".into();
+                }
+                _ => {}
             }
             self.event_log.push(ev.summary());
             if self.event_log.len() > self.event_cap {
@@ -198,12 +215,14 @@ impl TuiApp {
                 self.command.clear();
             }
             KeyCode::Down | KeyCode::Char('j') => {
+                self.show_output = false;
                 if !self.objects.is_empty() {
                     self.selected = (self.selected + 1).min(self.objects.len() - 1);
                     self.list_state.select(Some(self.selected));
                 }
             }
             KeyCode::Up | KeyCode::Char('k') => {
+                self.show_output = false;
                 if !self.objects.is_empty() {
                     self.selected = self.selected.saturating_sub(1);
                     self.list_state.select(Some(self.selected));
@@ -212,7 +231,50 @@ impl TuiApp {
             KeyCode::Char('s') => self.run_command("summary"),
             KeyCode::Char('u') => self.run_command("unknown"),
             KeyCode::Char('e') => self.run_command("export okf"),
+            KeyCode::Char('J') => self.run_command("jobs"),
             _ => {}
+        }
+    }
+
+    fn show_jobs_list(&mut self, cmd: &str) {
+        let filter_arg = cmd.strip_prefix("jobs").unwrap_or("").trim();
+        let status = if filter_arg.is_empty() {
+            None
+        } else {
+            match JobStatus::from_str(filter_arg) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    self.output_message = e;
+                    return;
+                }
+            }
+        };
+        let filter = JobListFilter {
+            scan_id: None,
+            status,
+            limit: Some(80),
+        };
+        match (self.job_store.summary_all(), self.job_store.list(&filter)) {
+            (Ok(summary), Ok(jobs)) => {
+                self.output_message = format_job_list(&jobs, Some(&summary), status);
+            }
+            (Err(e), _) | (_, Err(e)) => {
+                self.output_message = format!("jobs error: {e}");
+            }
+        }
+    }
+
+    fn show_job_detail(&mut self, cmd: &str) {
+        let id_arg = cmd.strip_prefix("job").unwrap_or("").trim();
+        if id_arg.is_empty() {
+            self.output_message =
+                "usage: job <id>  (full id or unique prefix; list with :jobs)".into();
+            return;
+        }
+        match resolve_job(&*self.job_store, id_arg) {
+            Ok(Some(job)) => self.output_message = format_job_detail(&job),
+            Ok(None) => self.output_message = format!("job not found: {id_arg}"),
+            Err(e) => self.output_message = format!("job error: {e}"),
         }
     }
 
@@ -225,9 +287,19 @@ impl TuiApp {
             self.should_quit = true;
             return;
         }
+        self.show_output = true;
         if cmd == "help" {
             self.output_message =
-                "commands: summary | objects | unknown | providers | stats | find <t> | explain <n> | graph <n> | export okf [path] | quit".into();
+                "commands: summary | objects | unknown | providers | stats | jobs [status] | job <id> | find <t> | explain <n> | graph <n> | export okf [path] | quit".into();
+            return;
+        }
+
+        if cmd == "jobs" || cmd.starts_with("jobs ") {
+            self.show_jobs_list(cmd);
+            return;
+        }
+        if cmd == "job" || cmd.starts_with("job ") {
+            self.show_job_detail(cmd);
             return;
         }
 
@@ -396,15 +468,19 @@ impl TuiApp {
             .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
             .split(main[0]);
 
-        let bottom = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
-            .split(main[1]);
-
         self.draw_sources(f, top[0]);
         self.draw_activity(f, top[1]);
-        self.draw_inventory(f, bottom[0]);
-        self.draw_current(f, bottom[1]);
+
+        if self.show_output && !self.output_message.is_empty() {
+            self.draw_output(f, main[1]);
+        } else {
+            let bottom = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+                .split(main[1]);
+            self.draw_inventory(f, bottom[0]);
+            self.draw_current(f, bottom[1]);
+        }
         self.draw_command(f, chunks[1]);
     }
 
@@ -414,13 +490,15 @@ impl TuiApp {
         let branch = store.git_branch().unwrap_or("n/a");
         let providers = store.enabled_providers().join(", ");
         let text = format!(
-            "Root: {}\nConnector: filesystem\nGit: {}\nDiscovered: {}\nQueue: {}\nBytes: {}\nProviders: {}\nScan: {}",
+            "Root: {}\nConnector: {}\nGit: {}\nDiscovered: {}\nQueue: {}\nBytes: {}\nProviders: {}\nScan id: {}\nScan: {}",
             self.root.display(),
+            store.connector().unwrap_or("unknown"),
             branch,
             snap.objects_discovered,
             snap.queue_depth,
             snap.bytes_considered,
             providers,
+            self.scan_id.as_deref().unwrap_or("(pending)"),
             if self.scan_done { "complete" } else { "running" }
         );
         let widget = Paragraph::new(text)
@@ -475,42 +553,28 @@ impl TuiApp {
         f.render_widget(widget, area);
     }
 
+    /// Full-width panel for the most recent command output (`:jobs`, `:summary`, …).
+    fn draw_output(&self, f: &mut ratatui::Frame<'_>, area: Rect) {
+        let widget = Paragraph::new(self.output_message.clone())
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Output — j/k to return to objects"),
+            )
+            .wrap(Wrap { trim: false });
+        f.render_widget(widget, area);
+    }
+
     fn draw_current(&mut self, f: &mut ratatui::Frame<'_>, area: Rect) {
         let store = self.store.lock().unwrap();
-        let body = if let Some(row) = self.objects.get(self.selected) {
+        let text = if let Some(row) = self.objects.get(self.selected) {
             if let Some(obj) = store.objects().find(|o| o.descriptor.id.as_str() == row.id) {
                 format_object_detail(obj)
             } else {
                 format!("{}\n[{}]", row.path, row.status)
             }
-        } else if !self.output_message.is_empty() {
-            self.output_message.clone()
         } else {
             "select an object…".into()
-        };
-
-        // Prefer command output when present and recent.
-        let text = if !self.output_message.is_empty() && !self.command_mode {
-            // Show object detail in panel; command output also in status — show both split
-            if self.objects.get(self.selected).is_some() && !body.contains("Gnosis summary") {
-                if self.output_message.len() > 20
-                    && (self.output_message.starts_with("Gnosis")
-                        || self.output_message.starts_with("entity")
-                        || self.output_message.starts_with("graph")
-                        || self.output_message.starts_with("[")
-                        || self.output_message.starts_with("providers")
-                        || self.output_message.starts_with("exported")
-                        || self.output_message.starts_with("commands"))
-                {
-                    self.output_message.clone()
-                } else {
-                    body
-                }
-            } else {
-                self.output_message.clone()
-            }
-        } else {
-            body
         };
 
         let items: Vec<ListItem> = self
@@ -583,6 +647,40 @@ fn format_object(o: &StoredObject) -> String {
         o.descriptor.relative_path.display(),
         o.classification_reason.as_deref().unwrap_or("")
     )
+}
+
+/// Resolve a job by full id or unique prefix / short id suffix.
+fn resolve_job(
+    store: &dyn JobStore,
+    query: &str,
+) -> crate::error::Result<Option<crate::jobs::Job>> {
+    let id = JobId::new(query);
+    if let Some(job) = store.get(&id)? {
+        return Ok(Some(job));
+    }
+    if !query.starts_with("job:") {
+        let prefixed = JobId::new(format!("job:{query}"));
+        if let Some(job) = store.get(&prefixed)? {
+            return Ok(Some(job));
+        }
+    }
+    let all = store.list(&JobListFilter::default())?;
+    let q = query.to_ascii_lowercase();
+    let matches: Vec<_> = all
+        .into_iter()
+        .filter(|j| {
+            let id = j.id.as_str().to_ascii_lowercase();
+            id == q || id.ends_with(&q) || id.contains(&q)
+        })
+        .collect();
+    match matches.len() {
+        0 => Ok(None),
+        1 => Ok(Some(matches.into_iter().next().unwrap())),
+        _ => Err(crate::error::GnosisError::Job(format!(
+            "ambiguous job id '{query}' ({} matches); use a longer prefix",
+            matches.len()
+        ))),
+    }
 }
 
 fn format_object_detail(o: &StoredObject) -> String {
@@ -709,12 +807,64 @@ mod tests {
         let app = TuiApp::new(
             PathBuf::from("/repo"),
             store,
+            Arc::new(crate::MemoryJobStore::new()),
             metrics,
             rx,
             50,
             PathBuf::from("/tmp/out.okf"),
         );
         (app, tx)
+    }
+
+    #[test]
+    fn jobs_command_output_is_rendered_over_object_detail() {
+        let store = seeded_store();
+        let job_store = Arc::new(crate::MemoryJobStore::new());
+        job_store
+            .enqueue(crate::Job::new(
+                "scan:test",
+                crate::KIND_ANALYZE_OBJECT,
+                serde_json::json!({"relative_path": "a.rs"}),
+            ))
+            .unwrap();
+
+        let (tx, rx) = bounded(32);
+        let metrics = Arc::new(ScanMetrics::new());
+        metrics.start();
+        let mut app = TuiApp::new(
+            PathBuf::from("/repo"),
+            store,
+            job_store,
+            metrics,
+            rx,
+            50,
+            PathBuf::from("/tmp/out.okf"),
+        );
+        drop(tx);
+
+        // An object is selected, which previously suppressed command output entirely.
+        app.refresh_objects();
+        assert_eq!(app.objects.len(), 1);
+
+        app.run_command("jobs");
+        assert!(app.show_output);
+
+        let backend = TestBackend::new(120, 40);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let flat: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(flat.contains("a.rs"), "job row should be visible");
+        assert!(flat.contains("pending"), "job status should be visible");
+
+        // Browsing objects restores the detail panel.
+        app.handle_key(KeyCode::Down);
+        assert!(!app.show_output);
     }
 
     #[test]
@@ -730,6 +880,7 @@ mod tests {
         let _ = tx.send(PipelineEvent::ScanCompleted {
             objects: 1,
             elapsed_ms: 1,
+            scan_id: "scan:test".into(),
         });
         app.drain_events();
         assert!(app.scan_done);
@@ -765,9 +916,16 @@ mod tests {
         assert!(app.output_message.contains("graph"));
         app.run_command("export okf");
         assert!(app.output_message.contains("exported") || app.output_message.contains("export"));
+        app.run_command("jobs");
+        assert!(app.output_message.contains("jobs:") || app.output_message.contains("(no jobs)"));
+        app.run_command("jobs pending");
+        app.run_command("job missing-id");
+        assert!(app.output_message.contains("not found") || app.output_message.contains("job"));
         app.run_command("nope");
         assert!(app.output_message.contains("unknown command"));
 
+        app.handle_key(KeyCode::Char('J'));
+        assert!(app.output_message.contains("jobs:") || app.output_message.contains("(no jobs)"));
         app.handle_key(KeyCode::Char('j'));
         app.handle_key(KeyCode::Char('k'));
         app.handle_key(KeyCode::Char('q'));
@@ -799,6 +957,7 @@ mod tests {
         tx.send(PipelineEvent::ScanCompleted {
             objects: 1,
             elapsed_ms: 1,
+            scan_id: "scan:test".into(),
         })
         .unwrap();
         drop(tx);

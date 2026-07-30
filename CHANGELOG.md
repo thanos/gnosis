@@ -7,9 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Persistent async job queue** — every discovered artifact is enqueued as an `analyze_object` job. Persistence is abstracted by `JobStore` (default: **redb** at `.gnosis/jobs.redb`). Jobs store function kind, JSON args, and result/error. CLI: `--job-db`.
+- **Job inspection** — `gnosis jobs list [--status …]` and `gnosis jobs show <id>`; TUI `:jobs [status]` (list) and `:job <id>` (detail). Shortcut `J`.
+- **Auto-retry with progressive backoff** — failed jobs are requeued automatically with exponential backoff (`available_at` gates claiming) and only marked `failed` once attempts are exhausted. Tunable via `--max-attempts`, `--retry-base-ms`, `--retry-max-ms` on `scan` and `jobs rerun`.
+- **Job pause / unpause / stop** — `gnosis jobs pause|unpause|stop` by job ids or `--scan-id`. Pause suspends pending/running jobs (`paused`); unpause returns them to `pending`; stop cancels them (`stopped`, terminal). In-flight workers ignore complete/fail once a job is paused or stopped.
+- **Job purge** — `gnosis jobs purge <age>` removes jobs whose `updated_at` is older than the age (`5d`, `12h`, `30m`, `90s`); `--dry-run` previews. Also `purge --scan-id …` (whole scan) or `purge <age> --scan-id …` (age within a scan).
+- **Job rerun** — `gnosis jobs rerun <id,id,…>` requeues listed jobs (comma-delimited ids/prefixes) under a fresh `rerun:…` scan and re-executes them; `--no-run` only requeues. Also `rerun --scan-id …` for an entire scan.
+- **Scan ids** — each `gnosis scan` creates a `scan:…` id linked to every job. Filter with `jobs list --scan-id`; list scans with `jobs scans`.
+- **S3 connector** — `gnosis scan s3://bucket[/prefix]` treats the bucket (or prefix) as the root folder and object keys as paths/filenames. Uses the default AWS credential chain; optional `--region`. No Git enrichment for S3 sources.
+
+### Fixed
+
+- TUI: `:jobs` (and other command output) is no longer hidden when an object is selected. Command output now takes over the lower panel full-width until you browse objects again with `j`/`k`.
+
 ### Changed
 
 - Collapsed the multi-crate workspace into a **single** `gnosis` package (library + `gnosis` binary). Internal modules remain (`providers`, `okf`, `tui`, …); crates.io publish is one crate only.
+- `ScanConfig` now carries a `ScanSource` (`Filesystem` or `S3`) instead of assuming a local path only.
+- Artifact analysis runs via async job workers claiming from the durable queue (crash recovery via `reclaim_stale`).
 
 ## [0.1.0] - 2026-07-24
 

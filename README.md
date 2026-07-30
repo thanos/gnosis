@@ -9,7 +9,7 @@
 
 **Gnosis compiles what you have into what you know.**
 
-Gnosis is an enterprise knowledge compiler: a local-first Rust tool that discovers digital objects in a repository, extracts structured knowledge with deterministic providers (Tree-sitter and lightweight document/data parsers), shows its work in a live TUI, and exports an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog) v0.1-style bundle.
+Gnosis is an enterprise knowledge compiler: a local-first Rust tool that discovers digital objects in a repository or S3 bucket, extracts structured knowledge with deterministic providers (Tree-sitter and lightweight document/data parsers), shows its work in a live TUI, and exports an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog) v0.1-style bundle.
 
 This is a proof of concept — not a search engine, vector database, or chat UI.
 
@@ -47,13 +47,21 @@ Headless (CI / scripting):
 cargo run -- scan ./fixtures/mixed-repo --no-tui --export
 ```
 
+S3 (bucket = root, keys = paths; default AWS credentials):
+
+```sh
+gnosis scan s3://my-bucket --no-tui --export
+gnosis scan s3://my-bucket/path/prefix --region us-east-1
+```
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `gnosis scan <path>` | Live TUI scan |
-| `gnosis scan <path> --no-tui` | Headless scan + summary |
-| `gnosis scan <path> --no-tui --export` | Also write `knowledge.okf/` |
+| `gnosis scan <path>` | Live TUI scan (local directory) |
+| `gnosis scan s3://bucket[/prefix]` | Scan an S3 bucket |
+| `gnosis scan <target> --no-tui` | Headless scan + summary |
+| `gnosis scan <target> --no-tui --export` | Also write `knowledge.okf/` |
 | `gnosis about` | Product overview |
 
 ### `scan` options
@@ -66,14 +74,50 @@ cargo run -- scan ./fixtures/mixed-repo --no-tui --export
 | `--output <dir>` | OKF output directory (default: `knowledge.okf`) |
 | `--max-size <bytes>` | Max bytes read per object (default: 2 MiB) |
 | `--concurrency <n>` | Analysis worker count |
+| `--region <name>` | AWS region for `s3://` scans (default credential chain otherwise) |
+| `--job-db <path>` | Persistent job queue database (default: `.gnosis/jobs.redb`) |
+| `--max-attempts <n>` | Attempts per job including the first (default: 3; `1` disables retries) |
+| `--retry-base-ms <ms>` | Initial retry backoff, doubled after each failure (default: 250) |
+| `--retry-max-ms <ms>` | Upper bound on retry backoff (default: 30000) |
 
-Scanning is recursive under `<path>` (via `ignore::WalkBuilder`). Descent skips `.gitignore` matches, `target` / `node_modules` / `.git` / `knowledge.okf`, and does not follow symlinks.
+Local scans are recursive under `<path>` (via `ignore::WalkBuilder`). Descent skips `.gitignore` matches, `target` / `node_modules` / `.git` / `knowledge.okf` / `.gnosis`, and does not follow symlinks.
+
+S3 scans list object keys under the bucket (or prefix), skip directory markers (`…/`), and skip keys whose path components match the same basename excludes (`target`, `node_modules`, `.git`, `knowledge.okf`, `.gnosis`).
+
+Every discovered artifact is enqueued as a durable `analyze_object` job (function kind + JSON args + result/error). Async workers claim jobs from the store; the default backend is [redb](https://docs.rs/redb).
+
+A job that fails is retried automatically with exponential backoff: after attempt `n` it goes back to `pending` with `available_at = now + min(retry_max_ms, retry_base_ms * 2^(n-1))`, and no worker can claim it until then. It is only marked `failed` once `--max-attempts` is exhausted; the stored error keeps the attempt count.
+
+### Jobs CLI
+
+Each scan assigns a `scan:…` id; every job is linked to it. Reruns create a fresh `rerun:…` id.
+
+```sh
+gnosis jobs scans                    # list scan ids + counts
+gnosis jobs list
+gnosis jobs list --status failed
+gnosis jobs list --scan-id scan:…    # filter by scan (unique prefix ok)
+gnosis jobs list --status completed --limit 20
+gnosis jobs show job:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+gnosis jobs show <short-id-prefix>   # unique prefix also works
+gnosis jobs purge 5d                 # delete jobs older than 5 days
+gnosis jobs purge 12h --dry-run      # preview only
+gnosis jobs purge --scan-id scan:…   # delete every job in a scan
+gnosis jobs purge 5d --scan-id scan:…  # age filter within a scan
+gnosis jobs pause --scan-id scan:…     # pause pending/running in a scan
+gnosis jobs pause abc123de,def456
+gnosis jobs unpause --scan-id scan:…
+gnosis jobs stop --scan-id scan:…      # cancel pending/paused/running
+gnosis jobs rerun job:aaa,job:bbb    # requeue + re-execute
+gnosis jobs rerun --scan-id scan:…   # requeue + re-execute whole scan
+gnosis jobs rerun abc123de,def456 --no-run
+```
 
 ### TUI commands (`:`)
 
-`summary` · `objects [status]` · `unknown` · `providers` · `stats` · `find <text>` · `explain <name>` · `graph <name>` · `export okf [path]` · `quit`
+`summary` · `objects [status]` · `unknown` · `providers` · `stats` · `jobs [status]` · `job <id>` · `find <text>` · `explain <name>` · `graph <name>` · `export okf [path]` · `quit`
 
-Shortcuts: `s` summary · `u` unknown · `e` export · `q` quit
+Shortcuts: `s` summary · `u` unknown · `e` export · `J` jobs · `q` quit
 
 ## What you get
 
@@ -84,10 +128,11 @@ Shortcuts: `s` summary · `u` unknown · `e` export · `q` quit
 ## Good fit today
 
 - Point at an unfamiliar local Git/repo tree and see structure emerge
-- Demo / PoC of “compile repo → structured knowledge”
+- Scan an S3 bucket the same way (keys as file paths) from a laptop or CI
+- Demo / PoC of “compile tree → structured knowledge”
 - Export a portable knowledge directory for humans or agents
 
-Not for yet: cloud buckets, remote-only hosts, PDFs/office, vectors/RAG, or chat (see [Limitations](#limitations)).
+Not for yet: remote Git hosts, web crawl, PDFs/office, vectors/RAG, or chat (see [Limitations](#limitations)).
 
 ## Library usage
 
@@ -110,7 +155,7 @@ use gnosis::{
 
 fn main() -> Result<()> {
     let config = ScanConfig::with_root("./my-repo");
-    let pipeline = Pipeline::new(config.clone(), default_registry());
+    let pipeline = Pipeline::new(config.clone(), default_registry())?;
     let mut handle = pipeline.spawn();
     let events = handle.take_events();
 
@@ -142,7 +187,7 @@ gnosis (one crate)
     └── tui (Ratatui UI)
 ```
 
-Pipeline: Connector → Discovery → ProtoData → Provider selection → Analysis → Knowledge store → Query / OKF export.
+Pipeline: Connector → Discovery → **Job queue** (`analyze_object`) → ProtoData → Provider selection → Analysis → Knowledge store → Query / OKF export.
 
 Events flow over a bounded channel so the TUI observes progress without coupling to workers.
 
@@ -155,10 +200,10 @@ Events flow over a bounded channel so the TUI observes progress without coupling
 
 ## Limitations
 
-- Local filesystem only (no S3, remote Git hosts, web crawl)
+- Connectors today: local filesystem and S3 (no remote Git hosts, web crawl)
 - No LLM providers, vectors, or persistent index
 - Tree-sitter is syntactic — not compiler-grade semantics
-- Git enrichment uses the `git` CLI when available (not a pure-Rust Git library)
+- Git enrichment uses the `git` CLI when available (filesystem scans only; not a pure-Rust Git library)
 - OKF export is a hand-written markdown+YAML bundle plus `sidecar.json` (not the `okf` crates.io crate)
 - No `gnosis.toml` yet — configuration is CLI flags only
 

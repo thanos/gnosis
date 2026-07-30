@@ -7,10 +7,7 @@ all-features = true
 [advisories]
 version = 2
 yanked = "warn"
-ignore = [
-    # Transitive via ratatui; no safe upgrade path yet.
-    "RUSTSEC-2024-0436",
-]
+ignore = []
 
 [licenses]
 version = 2

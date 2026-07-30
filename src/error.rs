@@ -19,6 +19,9 @@ pub enum GnosisError {
     #[error("query error: {0}")]
     Query(String),
 
+    #[error("job error: {0}")]
+    Job(String),
+
     #[error("cancelled")]
     Cancelled,
 

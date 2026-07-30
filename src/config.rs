@@ -1,10 +1,46 @@
+use crate::connectors::s3::S3Location;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
+/// Where objects are discovered from.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ScanSource {
+    /// Local directory (and optional Git enrichment).
+    Filesystem { root: PathBuf },
+    /// S3 bucket treated as a root folder; object keys are paths.
+    S3 {
+        location: S3Location,
+        /// Optional AWS region override (otherwise default chain / env).
+        region: Option<String>,
+    },
+}
+
+impl ScanSource {
+    pub fn connector_name(&self) -> &'static str {
+        match self {
+            Self::Filesystem { .. } => "filesystem",
+            Self::S3 { .. } => "s3",
+        }
+    }
+
+    pub fn display_root(&self) -> PathBuf {
+        match self {
+            Self::Filesystem { root } => root.clone(),
+            Self::S3 { location, .. } => location.display_root(),
+        }
+    }
+
+    pub fn uses_git(&self) -> bool {
+        matches!(self, Self::Filesystem { .. })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ScanConfig {
+    pub source: ScanSource,
+    /// Display / store root (`filesystem` path or `s3://bucket[/prefix]`).
     pub root: PathBuf,
     pub max_object_size: u64,
     pub excluded_paths: Vec<String>,
@@ -13,18 +49,27 @@ pub struct ScanConfig {
     pub output_path: PathBuf,
     pub skip_output_dir_name: String,
     pub queue_capacity: usize,
+    /// Persistent job database path (redb). Default: `.gnosis/jobs.redb`.
+    pub job_db_path: PathBuf,
+    /// Worker poll interval when the queue is empty.
+    pub job_poll_ms: u64,
+    /// Auto-retry policy for failed analyze jobs.
+    pub retry: crate::jobs::RetryPolicy,
 }
 
 impl Default for ScanConfig {
     fn default() -> Self {
+        let root = PathBuf::from(".");
         Self {
-            root: PathBuf::from("."),
+            source: ScanSource::Filesystem { root: root.clone() },
+            root,
             max_object_size: 2 * 1024 * 1024,
             excluded_paths: vec![
                 "target".into(),
                 "node_modules".into(),
                 ".git".into(),
                 "knowledge.okf".into(),
+                ".gnosis".into(),
             ],
             concurrency: std::thread::available_parallelism()
                 .map(|n| n.get())
@@ -34,16 +79,34 @@ impl Default for ScanConfig {
             output_path: PathBuf::from("knowledge.okf"),
             skip_output_dir_name: "knowledge.okf".into(),
             queue_capacity: 1024,
+            job_db_path: PathBuf::from(".gnosis/jobs.redb"),
+            job_poll_ms: 25,
+            retry: crate::jobs::RetryPolicy::default(),
         }
     }
 }
 
 impl ScanConfig {
     pub fn with_root(root: impl Into<PathBuf>) -> Self {
+        let root = root.into();
         Self {
-            root: root.into(),
+            source: ScanSource::Filesystem { root: root.clone() },
+            root,
             ..Self::default()
         }
+    }
+
+    pub fn with_source(source: ScanSource) -> Self {
+        let root = source.display_root();
+        Self {
+            source,
+            root,
+            ..Self::default()
+        }
+    }
+
+    pub fn connector_name(&self) -> &'static str {
+        self.source.connector_name()
     }
 }
 
