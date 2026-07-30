@@ -61,3 +61,11 @@ fn cli_scan_missing_path_fails() {
         .assert()
         .failure();
 }
+
+#[test]
+fn cli_scan_invalid_s3_uri_fails() {
+    Command::new(cargo_bin!("gnosis"))
+        .args(["scan", "s3://", "--no-tui"])
+        .assert()
+        .failure();
+}

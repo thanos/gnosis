@@ -1,9 +1,10 @@
-use crate::config::{ScanConfig, ScanMetrics};
+use crate::config::{ScanConfig, ScanMetrics, ScanSource};
 use crate::connectors::filesystem::{
     collect_neighbors, fingerprint_bytes, permissions_string, read_object_bytes,
     FilesystemConnector,
 };
 use crate::connectors::git::GitContext;
+use crate::connectors::s3::{AwsS3Backend, S3Connector};
 use crate::connectors::types::{ObjectDescriptor, ProtoData};
 use crate::content::BytesContentReader;
 use crate::error::{GnosisError, Result};
@@ -55,10 +56,48 @@ impl PipelineHandle {
     }
 }
 
+/// How workers fetch object bytes / neighbors for a scan.
+#[derive(Clone)]
+enum ObjectAccess {
+    Filesystem,
+    S3(Arc<S3Connector<AwsS3Backend>>),
+}
+
+impl ObjectAccess {
+    fn connector_name(&self) -> &'static str {
+        match self {
+            Self::Filesystem => "filesystem",
+            Self::S3(_) => "s3",
+        }
+    }
+
+    fn read_bytes(&self, object: &ObjectDescriptor, max_size: u64) -> Result<Vec<u8>> {
+        match self {
+            Self::Filesystem => read_object_bytes(&object.path, max_size),
+            Self::S3(c) => c.read_object_bytes(object, max_size),
+        }
+    }
+
+    fn neighbors(&self, object: &ObjectDescriptor, limit: usize) -> Vec<String> {
+        match self {
+            Self::Filesystem => collect_neighbors(&object.path, limit),
+            Self::S3(c) => c.collect_neighbors(object, limit),
+        }
+    }
+
+    fn permissions(&self, object: &ObjectDescriptor) -> Option<String> {
+        match self {
+            Self::Filesystem => permissions_string(&object.path),
+            Self::S3(_) => None,
+        }
+    }
+}
+
 impl Pipeline {
     pub fn new(config: ScanConfig, providers: ProviderRegistry) -> Self {
         let mut store = KnowledgeStore::new();
         store.set_root(config.root.clone());
+        store.set_connector(config.connector_name().to_string());
         store.set_enabled_providers(
             providers
                 .coverage_summary()
@@ -105,22 +144,52 @@ impl Pipeline {
         let root = self.config.root.clone();
         let _ = events.send(PipelineEvent::ScanStarted { root: root.clone() });
 
-        let git = GitContext::detect(&root);
-        {
-            let mut store = self.store.lock().unwrap();
-            store.set_git_branch(git.branch.clone());
-        }
+        let git = if self.config.source.uses_git() {
+            let git = GitContext::detect(&root);
+            {
+                let mut store = self.store.lock().unwrap();
+                store.set_git_branch(git.branch.clone());
+            }
+            git
+        } else {
+            GitContext::default()
+        };
 
-        let connector = FilesystemConnector::new(self.config.clone());
-        let objects = match connector.discover(&events, &self.cancel) {
-            Ok(o) => o,
-            Err(GnosisError::Cancelled) => return Err(GnosisError::Cancelled),
-            Err(e) => {
-                let _ = events.send(PipelineEvent::Failure {
-                    id: None,
-                    message: e.to_string(),
-                });
-                return Err(e);
+        let (objects, access) = match &self.config.source {
+            ScanSource::Filesystem { .. } => {
+                let connector = FilesystemConnector::new(self.config.clone());
+                let objects = match connector.discover(&events, &self.cancel) {
+                    Ok(o) => o,
+                    Err(GnosisError::Cancelled) => return Err(GnosisError::Cancelled),
+                    Err(e) => {
+                        let _ = events.send(PipelineEvent::Failure {
+                            id: None,
+                            message: e.to_string(),
+                        });
+                        return Err(e);
+                    }
+                };
+                (objects, ObjectAccess::Filesystem)
+            }
+            ScanSource::S3 { location, region } => {
+                let backend = Arc::new(AwsS3Backend::new(region.as_deref())?);
+                let connector = Arc::new(S3Connector::new(
+                    location.clone(),
+                    self.config.clone(),
+                    backend,
+                ));
+                let objects = match connector.discover(&events, &self.cancel) {
+                    Ok(o) => o,
+                    Err(GnosisError::Cancelled) => return Err(GnosisError::Cancelled),
+                    Err(e) => {
+                        let _ = events.send(PipelineEvent::Failure {
+                            id: None,
+                            message: e.to_string(),
+                        });
+                        return Err(e);
+                    }
+                };
+                (objects, ObjectAccess::S3(connector))
             }
         };
 
@@ -131,7 +200,8 @@ impl Pipeline {
         let (work_tx, work_rx) = bounded::<ObjectDescriptor>(self.config.queue_capacity);
         let workers = self.config.concurrency.max(1);
 
-        let mut handles = Vec::new();
+        let providers = Arc::new(self.providers);
+        let mut thread_handles = Vec::new();
         for _ in 0..workers {
             let work_rx = work_rx.clone();
             let events = events.clone();
@@ -140,23 +210,17 @@ impl Pipeline {
             let cancel = Arc::clone(&self.cancel);
             let config = self.config.clone();
             let git = git.clone();
-            // ProviderRegistry is not Clone — share via Arc
-            // We'll move providers into Arc before spawning
-            handles.push((work_rx, events, store, metrics, cancel, config, git));
-        }
-
-        // Rebuild with Arc providers
-        let providers = Arc::new(self.providers);
-        let mut thread_handles = Vec::new();
-        for (work_rx, events, store, metrics, cancel, config, git) in handles {
             let providers = Arc::clone(&providers);
+            let access = access.clone();
+            let use_git = self.config.source.uses_git();
             thread_handles.push(thread::spawn(move || {
                 while let Ok(object) = work_rx.recv() {
                     if cancel.load(Ordering::Relaxed) {
                         break;
                     }
                     if let Err(e) = process_object(
-                        &object, &providers, &config, &git, &store, &metrics, &events,
+                        &object, &providers, &config, &git, use_git, &access, &store, &metrics,
+                        &events,
                     ) {
                         let _ = events.send(PipelineEvent::Failure {
                             id: Some(object.id.clone()),
@@ -208,6 +272,8 @@ fn process_object(
     providers: &ProviderRegistry,
     config: &ScanConfig,
     git: &GitContext,
+    use_git: bool,
+    access: &ObjectAccess,
     store: &Mutex<KnowledgeStore>,
     metrics: &ScanMetrics,
     events: &Sender<PipelineEvent>,
@@ -216,27 +282,32 @@ fn process_object(
         .bytes_considered
         .fetch_add(object.size, Ordering::Relaxed);
 
-    let bytes = read_object_bytes(&object.path, config.max_object_size)?;
+    let bytes = access.read_bytes(object, config.max_object_size)?;
     let fingerprint = fingerprint_bytes(&bytes);
 
     let proto = ProtoData {
-        connector: "filesystem".into(),
+        connector: access.connector_name().into(),
         path: object.path.clone(),
         relative_path: object.relative_path.clone(),
         filename: object
-            .path
+            .relative_path
             .file_name()
+            .or_else(|| object.path.file_name())
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default(),
         extension: object.extension.clone(),
-        parent_path: object.path.parent().map(|p| p.to_path_buf()),
-        neighbor_names: collect_neighbors(&object.path, 16),
+        parent_path: object.relative_path.parent().map(|p| p.to_path_buf()),
+        neighbor_names: access.neighbors(object, 16),
         media_type: object.media_type.clone(),
         size: object.size,
         modified: object.modified,
-        permissions: permissions_string(&object.path),
+        permissions: access.permissions(object),
         fingerprint: Some(fingerprint),
-        git: git.enrich(&object.path),
+        git: if use_git {
+            git.enrich(&object.path)
+        } else {
+            None
+        },
     };
 
     let (provider, support) = match providers.select(object, &proto) {

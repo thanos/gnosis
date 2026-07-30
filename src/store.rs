@@ -43,6 +43,7 @@ pub struct KnowledgeStore {
     forward_rels: HashMap<EntityId, HashSet<RelationshipId>>,
     root: Option<std::path::PathBuf>,
     git_branch: Option<String>,
+    connector: Option<String>,
     enabled_providers: Vec<String>,
 }
 
@@ -65,6 +66,14 @@ impl KnowledgeStore {
 
     pub fn git_branch(&self) -> Option<&str> {
         self.git_branch.as_deref()
+    }
+
+    pub fn set_connector(&mut self, connector: impl Into<String>) {
+        self.connector = Some(connector.into());
+    }
+
+    pub fn connector(&self) -> Option<&str> {
+        self.connector.as_deref()
     }
 
     pub fn set_enabled_providers(&mut self, providers: Vec<String>) {

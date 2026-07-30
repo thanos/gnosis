@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **S3 connector** — `gnosis scan s3://bucket[/prefix]` treats the bucket (or prefix) as the root folder and object keys as paths/filenames. Uses the default AWS credential chain; optional `--region`. No Git enrichment for S3 sources.
+
 ### Changed
 
 - Collapsed the multi-crate workspace into a **single** `gnosis` package (library + `gnosis` binary). Internal modules remain (`providers`, `okf`, `tui`, …); crates.io publish is one crate only.
+- `ScanConfig` now carries a `ScanSource` (`Filesystem` or `S3`) instead of assuming a local path only.
 
 ## [0.1.0] - 2026-07-24
 

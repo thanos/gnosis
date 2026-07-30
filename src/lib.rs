@@ -20,8 +20,11 @@ pub mod status;
 pub mod store;
 pub mod tui;
 
-pub use config::{ScanConfig, ScanMetrics};
-pub use connectors::{FilesystemConnector, GitContext, GitProtoData, ObjectDescriptor, ProtoData};
+pub use config::{ScanConfig, ScanMetrics, ScanSource};
+pub use connectors::{
+    is_s3_uri, parse_s3_uri, FilesystemConnector, GitContext, GitProtoData, MemoryS3Backend,
+    ObjectDescriptor, ProtoData, S3Backend, S3Connector, S3Location,
+};
 pub use content::{BytesContentReader, ContentReader, LimitedReader};
 pub use error::{GnosisError, Result};
 pub use events::PipelineEvent;

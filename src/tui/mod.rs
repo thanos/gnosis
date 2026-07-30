@@ -414,8 +414,9 @@ impl TuiApp {
         let branch = store.git_branch().unwrap_or("n/a");
         let providers = store.enabled_providers().join(", ");
         let text = format!(
-            "Root: {}\nConnector: filesystem\nGit: {}\nDiscovered: {}\nQueue: {}\nBytes: {}\nProviders: {}\nScan: {}",
+            "Root: {}\nConnector: {}\nGit: {}\nDiscovered: {}\nQueue: {}\nBytes: {}\nProviders: {}\nScan: {}",
             self.root.display(),
+            store.connector().unwrap_or("unknown"),
             branch,
             snap.objects_discovered,
             snap.queue_depth,

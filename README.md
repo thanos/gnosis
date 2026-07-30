@@ -9,7 +9,7 @@
 
 **Gnosis compiles what you have into what you know.**
 
-Gnosis is an enterprise knowledge compiler: a local-first Rust tool that discovers digital objects in a repository, extracts structured knowledge with deterministic providers (Tree-sitter and lightweight document/data parsers), shows its work in a live TUI, and exports an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog) v0.1-style bundle.
+Gnosis is an enterprise knowledge compiler: a local-first Rust tool that discovers digital objects in a repository or S3 bucket, extracts structured knowledge with deterministic providers (Tree-sitter and lightweight document/data parsers), shows its work in a live TUI, and exports an [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog) v0.1-style bundle.
 
 This is a proof of concept — not a search engine, vector database, or chat UI.
 
@@ -47,13 +47,21 @@ Headless (CI / scripting):
 cargo run -- scan ./fixtures/mixed-repo --no-tui --export
 ```
 
+S3 (bucket = root, keys = paths; default AWS credentials):
+
+```sh
+gnosis scan s3://my-bucket --no-tui --export
+gnosis scan s3://my-bucket/path/prefix --region us-east-1
+```
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `gnosis scan <path>` | Live TUI scan |
-| `gnosis scan <path> --no-tui` | Headless scan + summary |
-| `gnosis scan <path> --no-tui --export` | Also write `knowledge.okf/` |
+| `gnosis scan <path>` | Live TUI scan (local directory) |
+| `gnosis scan s3://bucket[/prefix]` | Scan an S3 bucket |
+| `gnosis scan <target> --no-tui` | Headless scan + summary |
+| `gnosis scan <target> --no-tui --export` | Also write `knowledge.okf/` |
 | `gnosis about` | Product overview |
 
 ### `scan` options
@@ -66,9 +74,11 @@ cargo run -- scan ./fixtures/mixed-repo --no-tui --export
 | `--output <dir>` | OKF output directory (default: `knowledge.okf`) |
 | `--max-size <bytes>` | Max bytes read per object (default: 2 MiB) |
 | `--concurrency <n>` | Analysis worker count |
+| `--region <name>` | AWS region for `s3://` scans (default credential chain otherwise) |
 
-Scanning is recursive under `<path>` (via `ignore::WalkBuilder`). Descent skips `.gitignore` matches, `target` / `node_modules` / `.git` / `knowledge.okf`, and does not follow symlinks.
+Local scans are recursive under `<path>` (via `ignore::WalkBuilder`). Descent skips `.gitignore` matches, `target` / `node_modules` / `.git` / `knowledge.okf`, and does not follow symlinks.
 
+S3 scans list object keys under the bucket (or prefix), skip directory markers (`…/`), and skip keys whose path components match the same basename excludes (`target`, `node_modules`, `.git`, `knowledge.okf`).
 ### TUI commands (`:`)
 
 `summary` · `objects [status]` · `unknown` · `providers` · `stats` · `find <text>` · `explain <name>` · `graph <name>` · `export okf [path]` · `quit`
@@ -84,10 +94,11 @@ Shortcuts: `s` summary · `u` unknown · `e` export · `q` quit
 ## Good fit today
 
 - Point at an unfamiliar local Git/repo tree and see structure emerge
-- Demo / PoC of “compile repo → structured knowledge”
+- Scan an S3 bucket the same way (keys as file paths) from a laptop or CI
+- Demo / PoC of “compile tree → structured knowledge”
 - Export a portable knowledge directory for humans or agents
 
-Not for yet: cloud buckets, remote-only hosts, PDFs/office, vectors/RAG, or chat (see [Limitations](#limitations)).
+Not for yet: remote Git hosts, web crawl, PDFs/office, vectors/RAG, or chat (see [Limitations](#limitations)).
 
 ## Library usage
 
@@ -155,10 +166,10 @@ Events flow over a bounded channel so the TUI observes progress without coupling
 
 ## Limitations
 
-- Local filesystem only (no S3, remote Git hosts, web crawl)
+- Connectors today: local filesystem and S3 (no remote Git hosts, web crawl)
 - No LLM providers, vectors, or persistent index
 - Tree-sitter is syntactic — not compiler-grade semantics
-- Git enrichment uses the `git` CLI when available (not a pure-Rust Git library)
+- Git enrichment uses the `git` CLI when available (filesystem scans only; not a pure-Rust Git library)
 - OKF export is a hand-written markdown+YAML bundle plus `sidecar.json` (not the `okf` crates.io crate)
 - No `gnosis.toml` yet — configuration is CLI flags only
 
